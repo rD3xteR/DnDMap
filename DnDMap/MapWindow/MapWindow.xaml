@@ -1,0 +1,73 @@
+﻿<Window x:Class="DnDMap.MapWindow.MapWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:DnDMap"
+        xmlns:vm="clr-namespace:DnDMap.MapWindow.ViewModel"
+        xmlns:model="clr-namespace:DnDMap.TokenModel"
+        mc:Ignorable="d"
+        Title="Draggable Circles" 
+        WindowStyle="None"
+        WindowState="Maximized"
+        KeyDown="MainCanvas_KeyDown"
+        Closed="Window_Closed">
+
+    <Window.DataContext>
+        <vm:MapViewModel />
+    </Window.DataContext>
+
+    <Grid Background="Black">
+
+        <!-- Canvas для кругов -->
+        <Border Grid.Row="2" Grid.ColumnSpan="2">
+            <Canvas x:Name="MainCanvas"
+                    MouseLeftButtonDown="MainCanvas_MouseLeftButtonDown"
+                    MouseMove="MainCanvas_MouseMove">
+                <ItemsControl ItemsSource="{Binding Tokens}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Canvas/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type model:Token}">
+                            <Grid>
+                                <Ellipse Width="{Binding Diameter}" 
+                                         Height="{Binding Diameter}"
+                                         Fill="White"/>
+                                <Ellipse Width="{Binding Diameter}"
+                                         Height="{Binding Diameter}"
+                                         Stroke="Black"
+                                         StrokeThickness="3">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="{Binding ImagePath, UpdateSourceTrigger=PropertyChanged}" Stretch="Fill" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <Ellipse Width="{Binding Diameter}" 
+                                         Height="{Binding Diameter}" 
+                                         Stroke="IndianRed" 
+                                         Fill="LightGray"
+                                         Opacity="0.5"
+                                         StrokeThickness="3"
+                                         Visibility="{Binding IsSelected, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Canvas.Left" Value="{Binding X, Mode=OneWay}"/>
+                            <Setter Property="Canvas.Top" Value="{Binding Y, Mode=OneWay}"/>
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                </ItemsControl>
+
+                <Canvas.Background>
+                    <ImageBrush ImageSource="{Binding MapPath, UpdateSourceTrigger=PropertyChanged}" Stretch="Uniform"/>
+                </Canvas.Background>
+            </Canvas>
+        </Border>
+    </Grid>
+</Window>

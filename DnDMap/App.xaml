@@ -1,0 +1,10 @@
+﻿<Application x:Class="DnDMap.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:DnDMap"
+             xmlns:conv="clr-namespace:DnDMap.Core.Converters"
+             StartupUri="SettingsWindow/SettingsWindow.xaml">
+    <Application.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+    </Application.Resources>
+</Application>
