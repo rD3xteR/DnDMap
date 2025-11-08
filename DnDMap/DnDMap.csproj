@@ -18,11 +18,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="squirrel.windows" Version="2.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Page Update="MapWindow\MapWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <XamlRuntime>Wpf</XamlRuntime>
       <SubType>Designer</SubType>
     </Page>
   </ItemGroup>
-
+	
 </Project>
