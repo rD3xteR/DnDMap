@@ -5,6 +5,10 @@
     /// </summary>
     public partial class App : System.Windows.Application
     {
+        public App()
+        {
+            ShutdownMode = System.Windows.ShutdownMode.OnMainWindowClose;
+        }
     }
 
 }

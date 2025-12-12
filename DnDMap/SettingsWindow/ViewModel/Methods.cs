@@ -18,7 +18,7 @@ namespace DnDMap.SettingsWindow.ViewModel
             if (directory is null) return;
 
             MapsPath = directory;
-            MapItems ??= [];
+            MapItems = [];
             var maps = await GetImages(MapsPath);
 
             maps.ForEach(map =>
@@ -33,7 +33,7 @@ namespace DnDMap.SettingsWindow.ViewModel
             if (directory is null) return;
 
             TokensPath = directory;
-            TokenItems ??= [];
+            TokenItems = [];
             var tokens = await GetImages(TokensPath);
 
             tokens.ForEach(token =>
@@ -53,7 +53,7 @@ namespace DnDMap.SettingsWindow.ViewModel
         {
             if (SelectedMap is null) return;
             var path = SelectedMap.Path;
-            _mapViewModel.OpenWindow("C:/Users/User/Pictures/Maps/map1.jpg");
+            _mapViewModel.OpenWindow(path);
         }
 
         /// <summary>
