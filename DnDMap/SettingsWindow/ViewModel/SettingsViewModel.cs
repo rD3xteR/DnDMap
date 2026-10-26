@@ -9,10 +9,17 @@ namespace DnDMap.SettingsWindow.ViewModel
         {
             #region Commands
 
-            BrowseMapsCommand = new RelayCommand(BrowseMapsAsync);
-            BrowseTokensCommand = new RelayCommand(BrowseTokensAsync);
+            BrowseMapsCommand = new RelayCommand(BrowseMaps);
+            BrowseTokensCommand = new RelayCommand(BrowseTokens);
             AddTokenCommand = new RelayCommand(AddToken);
             OpenMapCommand = new RelayCommand(OpenMap);
+
+            #endregion
+
+            #region Load saved paths
+
+            SetMaps();
+            SetTokens();
 
             #endregion
         }

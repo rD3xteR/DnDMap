@@ -1,14 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using DnDMap.SettingsWindow.ViewModel;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 
 namespace DnDMap.SettingsWindow
 {
@@ -20,6 +11,12 @@ namespace DnDMap.SettingsWindow
         public SettingsWindow()
         {
             InitializeComponent();
+        }
+
+        private void Window_Closing(object sender, EventArgs e)
+        {
+            if (DataContext is not SettingsViewModel vm) return;
+            vm.OnClosing();
         }
     }
 }

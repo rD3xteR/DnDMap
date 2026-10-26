@@ -23,62 +23,25 @@ namespace DnDMap.SettingsWindow.ViewModel
             }
         }
 
-        public string? TokensPath
-        {
-            get => _tokensPath;
-            set => SetProperty(ref _tokensPath, value);
-        }
+        public string? TokensPath { get; set => SetProperty(ref field, value); } = Paths.Default.TokensPath;
 
-        public string? MapsPath
-        {
-            get => _mapsPath;
-            set => SetProperty(ref _mapsPath, value);
-        }
+        public string? MapsPath { get; set => SetProperty(ref field, value); } = Paths.Default.MapsPath;
 
-        public ObservableCollection<ImageItem> TokenItems
-        {
-            get => _tokenItems;
-            set => SetProperty(ref _tokenItems, value);
-        }
+        public ObservableCollection<ImageItem> TokenItems { get; set => SetProperty(ref field, value); } = [];
 
+        public ObservableCollection<ImageItem> MapItems { get; set => SetProperty(ref field, value); } = [];
 
-        public ObservableCollection<ImageItem> MapItems
-        {
-            get => _mapItems;
-            set => SetProperty(ref _mapItems, value);
-        }
+        public ImageItem? SelectedMap { get; set => SetProperty(ref field, value); }
 
-        public ImageItem? SelectedMap
-        {
-            get => _selectedMap;
-            set => SetProperty(ref _selectedMap, value);
-        }
+        public ImageItem? SelectedToken { get; set => SetProperty(ref field, value); }
 
-        public ImageItem? SelectedToken
-        {
-            get => _selectedToken;
-            set => SetProperty(ref _selectedToken, value);
-        }
-
-        public EntitySize? SelectedEntitySize
-        {
-            get => _selectedEntitySize;
-            set => SetProperty(ref _selectedEntitySize, value);
-        }
+        public EntitySize? SelectedEntitySize { get; set => SetProperty(ref field, value); } = EntitySize.Normal;
 
         #endregion
 
         #region Fields
 
-        private double _diameterToChange;
-        private string? _tokensPath;
-        private string? _mapsPath;
-        private ObservableCollection<ImageItem> _tokenItems = new();
-        private ObservableCollection<ImageItem> _mapItems = new();
-        private ImageItem? _selectedMap;
-        private ImageItem? _selectedToken;
         private MapViewModel _mapViewModel = new();
-        private EntitySize? _selectedEntitySize;
 
         #endregion
     }
