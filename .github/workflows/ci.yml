@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+# Read-only: the pipeline only builds and tests, never publishes.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Must match TargetFramework in DnDMap/DnDMap.csproj (net10.0-windows).
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore DnDMap.sln
+
+      - name: Build
+        run: dotnet build DnDMap.sln -c Debug --no-restore
+
+      # Runs dotnet test for every *Tests*/*.Test* project found; succeeds
+      # with a notice while the repository has no test projects yet.
+      - name: Test
+        shell: pwsh
+        run: |
+          $testProjects = @(Get-ChildItem -Path . -Recurse -Filter '*Test*.csproj' |
+              Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' })
+          if ($testProjects.Count -eq 0) {
+            Write-Host "No test projects found - skipping tests."
+            exit 0
+          }
+          Write-Host "Found $($testProjects.Count) test project(s):"
+          $failed = $false
+          foreach ($p in $testProjects) {
+            Write-Host ">> dotnet test $($p.FullName)"
+            dotnet test $p.FullName -c Debug
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
