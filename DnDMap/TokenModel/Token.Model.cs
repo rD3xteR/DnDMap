@@ -8,7 +8,7 @@ public partial class Token : ViewModelBase
 {
     #region Properties
 
-    public int Id { get; set; }
+    public Guid Id { get; set; } = Guid.NewGuid();
 
     public string ImagePath
     {

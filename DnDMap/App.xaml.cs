@@ -10,5 +10,4 @@
             ShutdownMode = System.Windows.ShutdownMode.OnMainWindowClose;
         }
     }
-
 }
