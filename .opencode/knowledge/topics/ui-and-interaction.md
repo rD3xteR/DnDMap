@@ -25,10 +25,12 @@
 
 ## Ввод (всё в `MapWindow.xaml.cs`)
 
+Мышь:
+
 | Событие | Поведение | Ключевые строки |
 | --- | --- | --- |
 | `MouseLeftButtonDown` | hit-test по токену: попал → начинаем перетаскивание токена (`SetSelectedToken`), не попал → панорама. Захват мыши в обоих случаях | 73-96 |
-| `MouseMove` | тянем токен (`MoveSelectedToken`, координаты через инверсию матрицы трансформа) или двигаем карту (`Pan`) | 99-119 |
+| `MouseMove` | тянем токен (`MoveSelectedToken`) или двигаем карту (`Pan`) | 99-119 |
 | `MouseLeftButtonUp` | снятие захвата мыши | 122-136 |
 | `MouseWheel` + `Ctrl` | зум под курсором, шаг ±0.1 (`ZoomAtPoint`) | 139-150 |
 | `ZoomSlider_ValueChanged` | зум к центру (игнорируется во время перетаскивания/панорамы) | 153-161 |
@@ -36,8 +38,19 @@
 | `KeyDown` (`Delete`) | удаление выделенного токена | 173-181 |
 | `SizeChanged` / `Loaded` | `UpdateViewportSize` → VM узнаёт фактический размер холста | 23-35 |
 
-- `TransformToMap` (38-50) — обращает `RenderTransform`, чтобы получить координаты в локальном пространстве холста.
-- `IsHitOnToken` (53-70) — поднимается по визуальному дереву от `InputHitTest` до `ContentPresenter`, чей `Content` является `Token`.
+Сенсорный ввод (мультитач, `IsManipulationEnabled="True"` на MainCanvas):
+
+| Событие | Поведение |
+| --- | --- |
+| `StylusDown` | `e.Handled = true` — подавляет промоцию тач-событий в мышь, чтобы жест не обрабатывался дважды |
+| `ManipulationStarting` | `ManipulationContainer = MainCanvas` — координаты жеста в пространстве карты (с учётом RenderTransform) |
+| `ManipulationStarted` | hit-test: попал на токен → режим перетаскивания токена, иначе панорама |
+| `ManipulationDelta` | один палец → панорама (`Pan(translation × Zoom)` — перевод контентных единиц в экранные) или драг токена; два пальца → pinch-зум `ZoomAtPoint` к центру жеста (`scale` из `DeltaManipulation.Scale`). `IsInertial` игнорируется |
+| `ManipulationCompleted` | сброс флага перетаскивания |
+| `ManipulationBoundaryFeedback` | `e.Handled = true` — подавляет системный «отскок» |
+
+- `IsHitOnToken` — поднимается по визуальному дереву от `InputHitTest` до `ContentPresenter`, чей `Content` является `Token`.
+- **ВАЖНО:** `e.GetPosition(MainCanvas)` уже учитывает `RenderTransform` элемента и возвращает координаты в пространстве карты. Раньше здесь была функция `TransformToMap` (обратная инверсия) — она применяла инверсию **повторно** и ломала драг при зуме (см. troubleshooting); удалена 2026-10-26.
 
 ## Токен
 
@@ -55,7 +68,7 @@
 - `SetMapSize(w,h)` — из пикселей картинки; `SetViewportSize(w,h)` — из `MainCanvas.ActualWidth/Height`.
 - `RecalcOffset` — держит карту в границах: если карта меньше viewport по оси — центрирует, иначе зажимает смещение в `[viewport - scaled, 0]`.
 - `Pan(dx,dy)` — то же зажимание, возвращает фактически применённое смещение.
-- `ZoomAtPoint(point, zoom)` — зум к точке: считает сдвиг `dx/dy` из отношения масштабов, затем снова зажимает смещение. Ограничение `[1..5]` в этом методе перебивается свойством `Zoom` (`[1..3]`) — фактический максимум 3× (см. troubleshooting).
+- `ZoomAtPoint(point, zoom)` — зум к точке: считает сдвиг `dx/dy` из отношения масштабов, затем снова зажимает смещение. Кламп `[1..3]` — синхронизирован со свойством `Zoom` 2026-10-26 (раньше был `[1..5]` и за верхней границей смещение считалось от «чужого» масштаба).
 
 ## Схема координат (важно при доработках)
 

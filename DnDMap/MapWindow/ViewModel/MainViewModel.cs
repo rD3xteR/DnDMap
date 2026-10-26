@@ -1,7 +1,6 @@
 ﻿using DnDMap.Core;
 using DnDMap.Core.BaseClasses;
-using DnDMap.Core.Command;
-using Point = System.Windows.Point;
+using System.Windows.Media.Imaging;
 
 namespace DnDMap.MapWindow.ViewModel;
 
@@ -9,13 +8,25 @@ public partial class MapViewModel : ViewModelBase
 {
     public MapViewModel()
     {
-        #region Commands
-
-        MouseDownCommand = new RelayCommand<Point>(OnMouseDown);
-        MouseMoveCommand = new RelayCommand<Point>(OnMouseMove);
-
-        #endregion
-
         GlobalSettings.TokenDiameterChanged += OnGlobalTokenSizeChanged;
+    }
+
+    public void OpenWindow(string mapPath)
+    {
+        _window = new();
+        _window.DataContext = this;
+        MapPath = mapPath;
+        _window.Show();
+
+        var mapImage = new BitmapImage(new Uri(mapPath));
+        SetMapSize(mapImage.PixelWidth, mapImage.PixelHeight);
+    }
+
+    public void OnClosing()
+    {
+        Tokens.Clear();
+        SelectedToken = null;
+        SelectedTokenOffset = null;
+        MapPath = null;
     }
 }

@@ -17,45 +17,52 @@
         <vm:MapViewModel />
     </Window.DataContext>
 
-    <Grid Background="Black">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+    </Window.Resources>
 
-        <!-- Canvas для кругов -->
-        <Border Grid.Row="2" Grid.ColumnSpan="2">
+    <Grid Background="Black">
+        <Border ClipToBounds="True" Background="Black">
             <Canvas x:Name="MainCanvas"
                     MouseLeftButtonDown="MainCanvas_MouseLeftButtonDown"
-                    MouseMove="MainCanvas_MouseMove">
+                    MouseMove="MainCanvas_MouseMove"
+                    MouseLeftButtonUp="MainCanvas_MouseLeftButtonUp"
+                    MouseWheel="MainCanvas_MouseWheel"
+                    IsManipulationEnabled="True"
+                    StylusDown="MainCanvas_StylusDown"
+                    ManipulationStarting="MainCanvas_ManipulationStarting"
+                    ManipulationStarted="MainCanvas_ManipulationStarted"
+                    ManipulationDelta="MainCanvas_ManipulationDelta"
+                    ManipulationCompleted="MainCanvas_ManipulationCompleted"
+                    ManipulationBoundaryFeedback="MainCanvas_ManipulationBoundaryFeedback">
+                <Canvas.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
+                        <TranslateTransform X="{Binding OffsetX}" Y="{Binding OffsetY}" />
+                    </TransformGroup>
+                </Canvas.RenderTransform>
+
                 <ItemsControl ItemsSource="{Binding Tokens}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <Canvas/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
-
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type model:Token}">
                             <Grid>
-                                <Ellipse Width="{Binding Diameter}" 
-                                         Height="{Binding Diameter}"
-                                         Fill="White"/>
-                                <Ellipse Width="{Binding Diameter}"
-                                         Height="{Binding Diameter}"
-                                         Stroke="Black"
-                                         StrokeThickness="3">
+                                <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}" Fill="White"/>
+                                <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}" Stroke="Black" StrokeThickness="3">
                                     <Ellipse.Fill>
                                         <ImageBrush ImageSource="{Binding ImagePath, UpdateSourceTrigger=PropertyChanged}" Stretch="Fill" />
                                     </Ellipse.Fill>
                                 </Ellipse>
-                                <Ellipse Width="{Binding Diameter}" 
-                                         Height="{Binding Diameter}" 
-                                         Stroke="IndianRed" 
-                                         Fill="LightGray"
-                                         Opacity="0.5"
-                                         StrokeThickness="3"
+                                <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}" Stroke="IndianRed" Fill="LightGray"
+                                         Opacity="0.5" StrokeThickness="3"
                                          Visibility="{Binding IsSelected, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
-
                     <ItemsControl.ItemContainerStyle>
                         <Style TargetType="ContentPresenter">
                             <Setter Property="Canvas.Left" Value="{Binding X, Mode=OneWay}"/>
@@ -69,5 +76,27 @@
                 </Canvas.Background>
             </Canvas>
         </Border>
+        
+        <!-- Слой управления (наезжает на карту) -->
+        <StackPanel HorizontalAlignment="Left" 
+                    VerticalAlignment="Center" 
+                    Background="Transparent">
+            <Slider x:Name="ZoomSlider" 
+                    Minimum="1" Maximum="3.0" 
+                    Value="{Binding Zoom, Mode=TwoWay}" 
+                    Width="20" 
+                    Height="300"
+                    Orientation="Vertical"
+                    TickFrequency="0.05" 
+                    IsSnapToTickEnabled="False"
+                    ValueChanged="ZoomSlider_ValueChanged"
+                    Background="Transparent"/>
+            <Button Content="Reset" 
+                    Click="ResetButton_Click" 
+                    Width="50" 
+                    Background="#80000000" 
+                    Foreground="White" 
+                    BorderThickness="0"/>
+        </StackPanel>
     </Grid>
 </Window>
