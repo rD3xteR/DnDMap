@@ -21,6 +21,8 @@ mono_crash.*
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
+# Inno Setup installer output (build-installer.ps1)
+/Setup/
 x64/
 x86/
 [Ww][Ii][Nn]32/
