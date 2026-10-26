@@ -27,7 +27,14 @@
                     MouseLeftButtonDown="MainCanvas_MouseLeftButtonDown"
                     MouseMove="MainCanvas_MouseMove"
                     MouseLeftButtonUp="MainCanvas_MouseLeftButtonUp"
-                    MouseWheel="MainCanvas_MouseWheel">
+                    MouseWheel="MainCanvas_MouseWheel"
+                    IsManipulationEnabled="True"
+                    StylusDown="MainCanvas_StylusDown"
+                    ManipulationStarting="MainCanvas_ManipulationStarting"
+                    ManipulationStarted="MainCanvas_ManipulationStarted"
+                    ManipulationDelta="MainCanvas_ManipulationDelta"
+                    ManipulationCompleted="MainCanvas_ManipulationCompleted"
+                    ManipulationBoundaryFeedback="MainCanvas_ManipulationBoundaryFeedback">
                 <Canvas.RenderTransform>
                     <TransformGroup>
                         <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />

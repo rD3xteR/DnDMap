@@ -89,7 +89,7 @@ namespace DnDMap.MapWindow.ViewModel
         public void ZoomAtPoint(Point canvasPoint, double newZoom)
         {
             double oldZoom = Zoom;
-            newZoom = Math.Max(1.0, Math.Min(5.0, newZoom));
+            newZoom = Math.Max(1.0, Math.Min(3.0, newZoom));
             if (Math.Abs(newZoom - oldZoom) < 0.001) return;
 
             double dx = canvasPoint.X - (canvasPoint.X * (newZoom / oldZoom));

@@ -15,7 +15,10 @@ namespace DnDMap.MapWindow
         private bool _isPanning;
         private Point _lastPanPoint;
         private bool _isDraggingToken;
-        private Point _lastTokenDragPoint;
+
+        // Сенсорный ввод (мультитач)
+        private bool _isTouchDraggingToken;
+        private Point _lastTouchDragPoint;
 
         public MapWindow()
         {
@@ -32,21 +35,6 @@ namespace DnDMap.MapWindow
             {
                 vm.SetViewportSize(MainCanvas.ActualWidth, MainCanvas.ActualHeight);
             }
-        }
-
-        // Преобразование экранных координат Canvas в исходные координаты карты
-        private Point TransformToMap(Point pointOnCanvas)
-        {
-            if (MainCanvas.RenderTransform is TransformGroup transform)
-            {
-                Matrix matrix = transform.Value;
-                if (matrix.HasInverse)
-                {
-                    matrix.Invert();
-                    return matrix.Transform(pointOnCanvas);
-                }
-            }
-            return pointOnCanvas;
         }
 
         // Определение, находится ли точка на каком-либо токене
@@ -81,7 +69,6 @@ namespace DnDMap.MapWindow
                 // Начинаем перетаскивание токена
                 _isDraggingToken = true;
                 vm.SetSelectedToken(mousePos, token!);
-                _lastTokenDragPoint = TransformToMap(mousePos);
                 MainCanvas.CaptureMouse();
                 e.Handled = true;
             }
@@ -102,9 +89,7 @@ namespace DnDMap.MapWindow
 
             if (_isDraggingToken)
             {
-                var current = TransformToMap(e.GetPosition(MainCanvas));
-                vm.MoveSelectedToken(current);
-                _lastTokenDragPoint = current;
+                vm.MoveSelectedToken(e.GetPosition(MainCanvas));
                 e.Handled = true;
             }
             else if (_isPanning)
@@ -158,6 +143,82 @@ namespace DnDMap.MapWindow
                 Point center = new Point(MainCanvas.ActualWidth / 2, MainCanvas.ActualHeight / 2);
                 vm.ZoomAtPoint(center, e.NewValue);
             }
+        }
+
+        // ===================== Сенсорный ввод (мультитач) =====================
+        // Один палец  — панорама карты либо перетаскивание токена (по точке старта).
+        // Два пальца  — pinch-зум к центру жеста (+ панорама за движением центра).
+
+        // Подавляем промоцию тач-событий в события мыши, иначе жест
+        // обрабатывался бы дважды (манипуляция + панорама мышью).
+        private void MainCanvas_StylusDown(object sender, System.Windows.Input.StylusDownEventArgs e)
+        {
+            e.Handled = true;
+        }
+
+        private void MainCanvas_ManipulationStarting(object sender, ManipulationStartingEventArgs e)
+        {
+            // Координаты жеста — в пространстве MainCanvas (пространстве карты),
+            // с учётом его RenderTransform, как и у GetPosition(MainCanvas).
+            e.ManipulationContainer = MainCanvas;
+        }
+
+        private void MainCanvas_ManipulationStarted(object sender, ManipulationStartedEventArgs e)
+        {
+            if (DataContext is not MapViewModel vm) return;
+
+            if (IsHitOnToken(e.ManipulationOrigin, out var token))
+            {
+                _isTouchDraggingToken = true;
+                vm.SetSelectedToken(e.ManipulationOrigin, token!);
+                _lastTouchDragPoint = e.ManipulationOrigin;
+            }
+        }
+
+        private void MainCanvas_ManipulationDelta(object sender, ManipulationDeltaEventArgs e)
+        {
+            if (DataContext is not MapViewModel vm) return;
+            if (e.IsInertial) return; // инерцию после подъёма пальцев не используем
+
+            var translation = e.DeltaManipulation.Translation;
+
+            if (_isTouchDraggingToken)
+            {
+                // Токен двигается вслед за пальцем (координаты уже в пространстве карты)
+                _lastTouchDragPoint = new Point(
+                    _lastTouchDragPoint.X + translation.X,
+                    _lastTouchDragPoint.Y + translation.Y);
+                vm.MoveSelectedToken(_lastTouchDragPoint);
+                e.Handled = true;
+                return;
+            }
+
+            // Панорама: Translation приходит в единицах контента,
+            // а OffsetX/Y — в экранных, поэтому умножаем на текущий зум.
+            vm.Pan(translation.X * vm.Zoom, translation.Y * vm.Zoom);
+
+            // Pinch-зум: масштаб жеста к текущему центру между пальцами
+            double scale = (e.DeltaManipulation.Scale.X + e.DeltaManipulation.Scale.Y) / 2;
+            if (Math.Abs(scale - 1.0) > 0.001)
+            {
+                var origin = e.ManipulationOrigin;
+                var cumulative = e.CumulativeManipulation.Translation;
+                Point gestureCenter = new Point(origin.X + cumulative.X, origin.Y + cumulative.Y);
+                vm.ZoomAtPoint(gestureCenter, vm.Zoom * scale);
+            }
+
+            e.Handled = true;
+        }
+
+        private void MainCanvas_ManipulationCompleted(object sender, ManipulationCompletedEventArgs e)
+        {
+            _isTouchDraggingToken = false;
+        }
+
+        // Подавляем системный "отскок" контента при достижении границ жеста
+        private void MainCanvas_ManipulationBoundaryFeedback(object sender, ManipulationBoundaryFeedbackEventArgs e)
+        {
+            e.Handled = true;
         }
 
         // Сброс зума и позиции

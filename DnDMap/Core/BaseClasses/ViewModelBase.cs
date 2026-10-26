@@ -26,7 +26,7 @@ namespace DnDMap.Core.BaseClasses
         protected virtual bool SetProperty(ref double field, double value,
             [CallerMemberName] string? propertyName = null)
         {
-            if (Math.Abs(field - value) < 000.1)
+            if (Math.Abs(field - value) < 1e-9)
                 return false;
 
             field = value;
