@@ -16,23 +16,24 @@ namespace DnDMap.Core.BaseClasses
         {
             if (EqualityComparer<T>.Default.Equals(field, value))
                 return false;
-            
+
             field = value;
             OnPropertyChanged(propertyName);
-            
+
             return true;
         }
 
         protected virtual bool SetProperty(ref double field, double value,
             [CallerMemberName] string? propertyName = null)
         {
-            if (field.Equals(value)) 
+            if (Math.Abs(field - value) < 000.1)
                 return false;
-            
+
             field = value;
             OnPropertyChanged(propertyName);
-            
+
             return true;
         }
+
     }
 }
