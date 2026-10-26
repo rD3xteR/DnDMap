@@ -12,34 +12,48 @@ namespace DnDMap.SettingsWindow.ViewModel
         public ICommand OpenMapCommand { get; }
         public ICommand AddTokenCommand { get; }
 
-        private async void BrowseMapsAsync()
+        public void OnClosing()
+        {
+            Paths.Default.MapsPath = MapsPath;
+            Paths.Default.TokensPath = TokensPath;
+
+            Paths.Default.Save();
+        }
+
+        private void BrowseMaps()
         {
             var directory = GetDirectory("maps");
             if (directory is null) return;
 
             MapsPath = directory;
             MapItems = [];
-            var maps = await GetImages(MapsPath);
-
-            maps.ForEach(map =>
-            {
-                MapItems.Add(map);
-            });
+            SetMaps();
         }
 
-        private async void BrowseTokensAsync()
+        private void SetMaps()
+        {
+            if (MapsPath is null) return;
+
+            var maps = GetImages(MapsPath);
+            maps.ForEach(MapItems.Add);
+        }
+
+        private void BrowseTokens()
         {
             var directory = GetDirectory("tokens");
             if (directory is null) return;
 
             TokensPath = directory;
             TokenItems = [];
-            var tokens = await GetImages(TokensPath);
+            SetTokens();
+        }
 
-            tokens.ForEach(token =>
-            {
-                TokenItems.Add(token);
-            });
+        private void SetTokens()
+        {
+            if (TokensPath is null) return;
+
+            var tokens = GetImages(TokensPath);
+            tokens.ForEach(TokenItems.Add);
         }
 
         private void AddToken()
@@ -76,26 +90,23 @@ namespace DnDMap.SettingsWindow.ViewModel
         /// <summary>
         /// Get images for specified directory
         /// </summary>
-        private async Task<List<ImageItem>> GetImages(string directory)
+        private List<ImageItem> GetImages(string directory)
         {
             var images = new List<ImageItem>();
 
-            await Task.Run(() =>
+            try
             {
-                try
-                {
-                    var imageFiles = Directory.GetFiles(directory, "*.*", SearchOption.TopDirectoryOnly)
-                        .Where(file => GlobalSettings.SupportedExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
-                        .Select(f => new ImageItem(Path.GetFileName(f), f))
-                        .ToList();
+                var imageFiles = Directory.GetFiles(directory, "*.*", SearchOption.TopDirectoryOnly)
+                    .Where(file => GlobalSettings.SupportedExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
+                    .Select(f => new ImageItem(Path.GetFileName(f), f))
+                    .ToList();
 
-                    images.AddRange(imageFiles);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error occured while loading images: {ex.Message} {ex.StackTrace}");
-                }
-            });
+                images.AddRange(imageFiles);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error occured while loading images: {ex.Message} {ex.StackTrace}");
+            }
 
             return images;
         }
