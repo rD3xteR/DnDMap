@@ -97,7 +97,11 @@ namespace DnDMap.MapWindow
                 var current = e.GetPosition(MainCanvas);
                 double dx = current.X - _lastPanPoint.X;
                 double dy = current.Y - _lastPanPoint.Y;
-                vm.Pan(dx, dy);
+
+                // GetPosition возвращает координаты в пространстве карты (до
+                // RenderTransform), а OffsetX/Y сдвигают её в экранных единицах,
+                // поэтому дельту умножаем на текущий зум — как в тач-пути.
+                vm.Pan(dx * vm.Zoom, dy * vm.Zoom);
                 _lastPanPoint = current;
                 e.Handled = true;
             }
@@ -225,9 +229,7 @@ namespace DnDMap.MapWindow
         private void ResetButton_Click(object sender, RoutedEventArgs e)
         {
             if (DataContext is not MapViewModel vm) return;
-            vm.Zoom = 1.0;
-            vm.OffsetX = 0;
-            vm.OffsetY = 0;
+            vm.ResetView();
         }
 
         // Удаление токена по Delete

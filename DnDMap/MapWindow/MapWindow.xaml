@@ -4,7 +4,6 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DnDMap"
-        xmlns:vm="clr-namespace:DnDMap.MapWindow.ViewModel"
         xmlns:model="clr-namespace:DnDMap.TokenModel"
         mc:Ignorable="d"
         Title="Draggable Circles" 
@@ -12,10 +11,6 @@
         WindowState="Maximized"
         KeyDown="MainCanvas_KeyDown"
         Closed="Window_Closed">
-
-    <Window.DataContext>
-        <vm:MapViewModel />
-    </Window.DataContext>
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
@@ -72,7 +67,13 @@
                 </ItemsControl>
 
                 <Canvas.Background>
-                    <ImageBrush ImageSource="{Binding MapPath, UpdateSourceTrigger=PropertyChanged}" Stretch="Uniform"/>
+                    <!-- Alignment Left/Top фиксирует картинку в (0,0) координат canvas:
+                         центрирование на экране делает RecalcOffset через OffsetX/OffsetY,
+                         иначе вёрстка clamp в Pan/ZoomAtPoint рассыпается. -->
+                    <ImageBrush ImageSource="{Binding MapPath, UpdateSourceTrigger=PropertyChanged}"
+                                Stretch="Uniform"
+                                AlignmentX="Left"
+                                AlignmentY="Top"/>
                 </Canvas.Background>
             </Canvas>
         </Border>

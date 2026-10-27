@@ -18,37 +18,53 @@ namespace DnDMap.MapWindow.ViewModel
             RecalcOffset();
         }
 
+        /// <summary>
+        /// Сброс зума и позиции: карта возвращается в масштаб 1× и центрируется в окне.
+        /// </summary>
+        public void ResetView()
+        {
+            Zoom = 1.0;
+            OffsetX = 0;
+            OffsetY = 0;
+            RecalcOffset();
+        }
+
+        /// <summary>
+        /// Размер, в котором карта реально рисуется на экране при текущем зуме.
+        /// Карта отображается как фон Canvas через ImageBrush Stretch="Uniform",
+        /// поэтому она вписывается в окно, а не рисуется в пиксельных размерах файла.
+        /// </summary>
+        private (double width, double height) GetScaledSize()
+        {
+            if (_mapWidth <= 0 || _mapHeight <= 0 || _viewportWidth <= 0 || _viewportHeight <= 0)
+                return (0, 0);
+
+            double fit = Math.Min(_viewportWidth / _mapWidth, _viewportHeight / _mapHeight);
+
+            return (_mapWidth * fit * Zoom, _mapHeight * fit * Zoom);
+        }
+
+        /// <summary>
+        /// Держит карту так, чтобы она покрывала экран: если после зума карта
+        /// больше окна — не даёт утащить её за край; если меньше — центрирует.
+        /// </summary>
         private void RecalcOffset()
         {
-            if (_mapWidth == 0 || _mapHeight == 0 || _viewportWidth == 0 || _viewportHeight == 0)
+            var (scaledWidth, scaledHeight) = GetScaledSize();
+            if (scaledWidth == 0 || scaledHeight == 0)
                 return;
-
-            double scaledWidth = _mapWidth * Zoom;
-            double scaledHeight = _mapHeight * Zoom;
 
             // Горизонталь
             if (scaledWidth > _viewportWidth)
-            {
-                double minX = _viewportWidth - scaledWidth;
-                double maxX = 0;
-                OffsetX = Math.Max(minX, Math.Min(maxX, OffsetX));
-            }
+                OffsetX = Math.Max(_viewportWidth - scaledWidth, Math.Min(0, OffsetX));
             else
-            {
                 OffsetX = (_viewportWidth - scaledWidth) / 2;
-            }
 
             // Вертикаль
             if (scaledHeight > _viewportHeight)
-            {
-                double minY = _viewportHeight - scaledHeight;
-                double maxY = 0;
-                OffsetY = Math.Max(minY, Math.Min(maxY, OffsetY));
-            }
+                OffsetY = Math.Max(_viewportHeight - scaledHeight, Math.Min(0, OffsetY));
             else
-            {
                 OffsetY = (_viewportHeight - scaledHeight) / 2;
-            }
         }
 
         public (double appliedX, double appliedY) Pan(double deltaX, double deltaY)
@@ -56,32 +72,9 @@ namespace DnDMap.MapWindow.ViewModel
             double oldX = OffsetX;
             double oldY = OffsetY;
 
-            double scaledWidth = _mapWidth * Zoom;
-            double scaledHeight = _mapHeight * Zoom;
-
-            if (scaledWidth > _viewportWidth)
-            {
-                double newX = OffsetX + deltaX;
-                double minX = _viewportWidth - scaledWidth;
-                double maxX = 0;
-                OffsetX = Math.Max(minX, Math.Min(maxX, newX));
-            }
-            else
-            {
-                OffsetX = (_viewportWidth - scaledWidth) / 2;
-            }
-
-            if (scaledHeight > _viewportHeight)
-            {
-                double newY = OffsetY + deltaY;
-                double minY = _viewportHeight - scaledHeight;
-                double maxY = 0;
-                OffsetY = Math.Max(minY, Math.Min(maxY, newY));
-            }
-            else
-            {
-                OffsetY = (_viewportHeight - scaledHeight) / 2;
-            }
+            OffsetX += deltaX;
+            OffsetY += deltaY;
+            RecalcOffset();
 
             return (OffsetX - oldX, OffsetY - oldY);
         }
@@ -97,33 +90,9 @@ namespace DnDMap.MapWindow.ViewModel
 
             Zoom = newZoom;
 
-            double newX = OffsetX + dx;
-            double newY = OffsetY + dy;
-
-            double scaledWidth = _mapWidth * Zoom;
-            double scaledHeight = _mapHeight * Zoom;
-
-            if (scaledWidth > _viewportWidth)
-            {
-                double minX = _viewportWidth - scaledWidth;
-                double maxX = 0;
-                OffsetX = Math.Max(minX, Math.Min(maxX, newX));
-            }
-            else
-            {
-                OffsetX = (_viewportWidth - scaledWidth) / 2;
-            }
-
-            if (scaledHeight > _viewportHeight)
-            {
-                double minY = _viewportHeight - scaledHeight;
-                double maxY = 0;
-                OffsetY = Math.Max(minY, Math.Min(maxY, newY));
-            }
-            else
-            {
-                OffsetY = (_viewportHeight - scaledHeight) / 2;
-            }
+            OffsetX += dx;
+            OffsetY += dy;
+            RecalcOffset();
         }
     }
 }
