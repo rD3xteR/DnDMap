@@ -8,12 +8,12 @@ Currently, it's in a stage of `lazy development` where the main functionality is
 
 ## Features
 
-- Choose a folder with map images and open a map in a borderless fullscreen window.
+- Choose a folder with map images and open a map in a borderless fullscreen window. Only one map window exists at a time: opening another map replaces the current one in the same window (existing tokens are kept).
 - Choose a folder with token images (`.png`, `.jpg`, `.jpeg`) and add tokens to the map.
 - Drag tokens with the mouse, select them (highlighted), remove with `Del`.
 - Token diameter follows the D&D size categories: `Normal` / `Big` / `Huge` → ×1 / ×2 / ×3 of the base diameter.
 - Adjustable base diameter (slider, 20–200 px, default 100 px), applied to all tokens at once.
-- Pan the map by dragging, zoom with `Ctrl` + mouse wheel or the vertical slider (1×–3×), reset the view with `Reset`.
+- Pan the map by dragging, zoom with `Ctrl` + mouse wheel or the vertical slider (1×–3×), reset the view with `Reset`. The map always covers the screen, so it cannot be dragged out of view; at 1× it is fully visible and centred.
 - The last used map/token folders are remembered between sessions.
 
 ## Requirements
@@ -35,14 +35,14 @@ dotnet run --project DnDMap/DnDMap.csproj
 ## Usage
 
 1. Launch the app — the control window **«Управление»** opens.
-2. **Выбор карты** → **Обзор...** → pick a folder with map images → select a map → **Открыть карту**.
+2. **Выбор карты** → **Обзор...** → pick a folder with map images → select a map → **Открыть карту**. Selecting another map later reuses the already-open map window (tokens are preserved).
 3. **Параметры круга** → set the base diameter and the creature size for the next token.
 4. **Галерея изображений** → **Обзор...** → pick a folder with token images → select one → **Добавить токен**.
 5. Interact with the map window (it opens maximized, without a title bar — close it with `Alt+F4`):
 
 | Action | Result |
 | --- | --- |
-| Drag empty space | Pan the map |
+| Drag empty space | Pan the map (clamped: the map always covers the screen) |
 | Drag a token | Move the token |
 | Click a token | Select it (red highlight) |
 | `Del` | Delete the selected token |
@@ -94,7 +94,7 @@ The GitHub Actions workflow `.github/workflows/release.yml` runs on tags matchin
 ## Status / known limitations
 
 - No automated tests: the solution contains no test projects.
-- Tokens and the open map are not persisted — everything is reset when the map window closes.
+- Tokens and the open map are not persisted between sessions — everything is reset when the map window closes. (Switching to another map in the still-open window keeps the tokens.)
 - Closing the control window exits the whole application (`ShutdownMode.OnMainWindowClose`).
 - The installer is not code-signed — Windows SmartScreen may warn on first run.
 - The full CI pipeline (Inno Setup compilation + release upload) is verified by the first `workflow_dispatch`/tag run, not locally.
