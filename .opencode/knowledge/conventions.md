@@ -59,3 +59,19 @@ dotnet run --project DnDMap/DnDMap.csproj
 - Секретов в проекте нет и появляться не должно (папки — только локальные пути пользователя).
 - PowerShell-скрипты в корне (`build-installer.ps1`) — **только ASCII**: они должны корректно выполняться при любой кодировке консоли/раннера. Старый скрипт был с испорченной кодировкой (см. troubleshooting) — этот урок сохранён в правиле.
 - Инсталлятор собирается командой `.\build-installer.ps1 -Version <версия>`; нужен установленный Inno Setup 6 (`ISCC.exe`). Скрипт сам чистит `Setup\` и `publish\<Version>` — это ожидаемо.
+
+## Новые проекты `src/` (с 2026-11-10)
+
+```powershell
+dotnet build DnDMap.sln -c Debug
+dotnet build DnDMap.sln -c Release
+dotnet test src/DnDMap.Core.Tests/DnDMap.Core.Tests.csproj
+```
+
+- `src/DnDMap.Core`, `src/DnDMap.Server`, `src/DnDMap.Core.Tests` — `net10.0`, `LangVersion=preview`, `Nullable=enable`.
+- Вывод — в их собственные `bin/obj` **внутри** репозитория (в отличие от WPF-проекта с `BaseOutputPath`); git их игнорирует.
+- Корневой `Directory.Build.props` **не добавлять**: он применится и к существующему WPF-проекту и может изменить его сборку.
+- Прод-код — только BCL. NuGet-пакеты допустимы только в тестовом проекте
+  (`xunit 2.9.3`, `xunit.runner.visualstudio 3.1.5`, `Microsoft.NET.Test.Sdk 18.11.0`).
+- Тесты фиксируют поведение: `LegacyParityTests` сравнивает новую геометрию со старой `ZoomPan.cs`.
+  При изменении математики кадра parity-тесты обязаны оставаться зелёными (иначе это осознанное изменение поведения — фиксировать в decisions).
