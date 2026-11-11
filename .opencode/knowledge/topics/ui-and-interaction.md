@@ -1,80 +1,88 @@
 # Тема: окна, ввод и рендеринг
 
-Обновлено: 2026-10-26.
+Обновлено: 2026-11-11 (M1 — WPF переведён на ядро; сенсорный ввод удалён).
 
 ## Окно «Управление» (SettingsWindow)
 
 - Файл: `DnDMap/SettingsWindow/SettingsWindow.xaml` (+ `.xaml.cs`), VM — `SettingsWindow/ViewModel/*`.
 - Сетка 2 колонки:
   - сверху на всю ширину — **«Выбор карты»**: кнопка «Обзор...», текущий путь, список файлов-карт, кнопка «Открыть карту»;
-  - слева — **«Параметры круга»**: слайдер диаметра (20–200) + ComboBox размера существа (сборка через `{ext:EnumBindingSource {x:Type enums:EntitySize}}`);
+  - слева — **«Параметры круга»**: слайдер диаметра (20–200) + ComboBox размера существа (сборка через `{ext:EnumBindingSource {x:Type enums:EntitySize}}`, `EntitySize` — из ядра);
   - справа — **«Галерея изображений»**: «Обзор...», путь, список картинок-токенов;
   - снизу — кнопка **«Добавить токен»** (`IsDefault` → работает по `Enter`).
 - Обзор папок — `System.Windows.Forms.FolderBrowserDialog` (поэтому в csproj включён `UseWindowsForms`).
 - Списки — только **имена файлов** (`ImageItem.Name`), не превью картинок.
 - Пути запоминаются при закрытии окна (`Window_Closing` → `vm.OnClosing()` → `Paths.Default.Save()`).
+- Слайдер диаметра и `AddToken` идут не в статику, а в единственный `MapViewModel`
+  (`SettingsWindow/ViewModel/Properties.cs:44`): `DiameterToChange` → `MapViewModel.SetDiameter`,
+  «Добавить токен» → `MapViewModel.AddToken(path, EntitySize)`.
+- Расширения картинок — `PhysicalFileStore.SupportedExtensions` из ядра, не локальный список.
 
 ## Окно карты (MapWindow)
 
 - Файл: `DnDMap/MapWindow/MapWindow.xaml` (+ `.xaml.cs`), VM — `MapWindow/ViewModel/*`.
 - `WindowStyle="None"`, `WindowState="Maximized"` → безрамочное полноэкранное окно; закрытие — `Alt+F4` (обработчик `Closed` вызывает `vm.OnClosing()`).
-- Структура: `Grid` (чёрный) → `Border ClipToBounds` → `Canvas x:Name="MainCanvas"` с `RenderTransform = Scale(Zoom) + Translate(OffsetX, OffsetY)`.
-  - фон canvas — `ImageBrush` с `MapPath`;
-  - токены — `ItemsControl` (панель `Canvas`), позиция через `Canvas.Left/Top` в привязке к `Token.X/Y`.
-- Поверх карты — `StackPanel` слева: вертикальный `ZoomSlider` (1–3, шаг 0.05) и кнопка `Reset`.
+- Структура: `Grid` (чёрный) → `Border ClipToBounds` → `Canvas x:Name="MainCanvas"` **без `RenderTransform`**:
+  - карта — `Image` с `Source={Binding MapImageSource}`, `Stretch="Fill"`, размер `MapWidth/MapHeight`,
+    позиция `Canvas.Left/Top = MapLeft/MapTop`; размеры и позиция считаются ядром (`ViewGeometry.MapRectToScreen`);
+  - токены — `ItemsControl` (панель `Canvas`), `TokenViewModel.Left/Top/Diameter` уже в **пикселях окна**.
+- Поверх карты — `StackPanel` слева: вертикальный `ZoomSlider` (1–3, шаг 0.05, `Mode=OneWay`) и кнопка `Reset`.
 
 ## Ввод (всё в `MapWindow.xaml.cs`)
 
+Координаты мыши/жеста — сразу **пиксели окна**: `e.GetPosition(MainCanvas)` без трансформаций.
+Перевод в пиксели карты делает `MapViewModel` через `ViewGeometry.ScreenToMap`.
+
 Мышь:
 
-| Событие | Поведение | Ключевые строки |
+| Событие | Поведение | Метод VM |
 | --- | --- | --- |
-| `MouseLeftButtonDown` | hit-test по токену: попал → начинаем перетаскивание токена (`SetSelectedToken`), не попал → панорама. Захват мыши в обоих случаях | 73-96 |
-| `MouseMove` | тянем токен (`MoveSelectedToken`) или двигаем карту (`Pan`) | 99-119 |
-| `MouseLeftButtonUp` | снятие захвата мыши | 122-136 |
-| `MouseWheel` + `Ctrl` | зум под курсором, шаг ±0.1 (`ZoomAtPoint`) | 139-150 |
-| `ZoomSlider_ValueChanged` | зум к центру (игнорируется во время перетаскивания/панорамы) | 153-161 |
-| `ResetButton_Click` | `Zoom=1`, `OffsetX/Y=0` | 164-170 |
-| `KeyDown` (`Delete`) | удаление выделенного токена | 173-181 |
-| `SizeChanged` / `Loaded` | `UpdateViewportSize` → VM узнаёт фактический размер холста | 23-35 |
+| `MouseLeftButtonDown` | hit-test по токену: попал → перетаскивание, не попал → панорама. Захват мыши в обоих случаях | `HitTest`, `BeginTokenDrag` |
+| `MouseMove` | тянем токен или двигаем кадр на экранную дельту | `DragToken`, `PanByScreen` |
+| `MouseLeftButtonUp` | конец драга, снятие захвата мыши | `EndTokenDrag` |
+| `MouseWheel` + `Ctrl` | зум под курсором, шаг ±0.1 | `ZoomAt(point, zoom ± 0.1)` |
+| `ZoomSlider_ValueChanged` | зум к центру (игнорируется во время перетаскивания/панорамы) | `ZoomTo(value)` |
+| `ResetButton_Click` | `ResetViewCommand` (1×, по центру) | `ResetView` |
+| `KeyDown` (`Delete`) | удаление выделенного токена | `RemoveSelectedToken` |
+| `SizeChanged` / `Loaded` | VM узнаёт живой размер холста | `SetViewportSize` |
 
-Сенсорный ввод (мультитач, `IsManipulationEnabled="True"` на MainCanvas):
-
-| Событие | Поведение |
-| --- | --- |
-| `StylusDown` | `e.Handled = true` — подавляет промоцию тач-событий в мышь, чтобы жест не обрабатывался дважды |
-| `ManipulationStarting` | `ManipulationContainer = MainCanvas` — координаты жеста в пространстве карты (с учётом RenderTransform) |
-| `ManipulationStarted` | hit-test: попал на токен → режим перетаскивания токена, иначе панорама |
-| `ManipulationDelta` | один палец → панорама (`Pan(translation × Zoom)` — перевод контентных единиц в экранные) или драг токена; два пальца → pinch-зум `ZoomAtPoint` к центру жеста (`scale` из `DeltaManipulation.Scale`). `IsInertial` игнорируется |
-| `ManipulationCompleted` | сброс флага перетаскивания |
-| `ManipulationBoundaryFeedback` | `e.Handled = true` — подавляет системный «отскок» |
-
-- `IsHitOnToken` — поднимается по визуальному дереву от `InputHitTest` до `ContentPresenter`, чей `Content` является `Token`.
-- **ВАЖНО:** `e.GetPosition(MainCanvas)` уже учитывает `RenderTransform` элемента и возвращает координаты в пространстве карты. Раньше здесь была функция `TransformToMap` (обратная инверсия) — она применяла инверсию **повторно** и ломала драг при зуме (см. troubleshooting); удалена 2026-10-26.
+- Hit-test и так делает ядро-совместимый расчёт: обход токенов сверху вниз, расстояние до центра
+  в пикселях окна (`MapViewModel.HitTest`), без `InputHitTest` по визуальному дереву.
+- **ВАЖНО:** `e.GetPosition(MainCanvas)` возвращает пиксели окна, потому что у `Canvas` больше нет
+  `RenderTransform`. Нельзя снова делить на зум/вычитать offset в code-behind — это делает `ScreenToMap`.
+- **Сенсорный ввод удалён 2026-11-11** по просьбе пользователя: обработчики `StylusDown`/`Manipulation*`,
+  `IsManipulationEnabled` и поля мультитача убраны из `MapWindow.xaml`/`.xaml.cs`. Осталось только управление мышью.
 
 ## Токен
 
-- Модель: `TokenModel/Token.Model.cs` — `Id (Guid)`, `ImagePath`, `X`, `Y`, `EntitySize`, `IsSelected`, вычисляемый `Diameter = GlobalSettings.TokenDiameter × (int)EntitySize`.
-- Поведение: `TokenModel/Token.Behavior.cs` — `GetOffset`, `Move`, `OnGlobalTokenSizeChanged`.
-- Отображение (`MapWindow.xaml:44-57`): три концентрических `Ellipse`
+- Ядро: `DnDMap.Core.Model.MapToken` — `Id (string)`, `File`, `EntitySize`, `X/Y` (**центр в px карты**), `Size` (диаметр в px карты).
+- Представление: `MapWindow/ViewModel/TokenViewModel` — `Id`, `File`, `ImagePath` (абсолютный путь, только WPF),
+  `Left`, `Top`, `Diameter`, `IsSelected` — всё в пикселях окна.
+- Отображение (`MapWindow.xaml`): три концентрических `Ellipse`
   1. белая подложка (видна, если картинка с прозрачностью/не загрузилась);
   2. `ImageBrush` с картинкой токена (`Stretch="Fill"`, обводка чёрная 3px);
   3. оверлей выделения `IndianRed`, `Opacity=0.5`, виден через `BooleanToVisibilityConverter` по `IsSelected`.
-- Логика добавления/выделения/перемещения — `MapWindow/ViewModel/Tokens.cs`.
-- Размер всех токенов меняется одновременно через событие `GlobalSettings.TokenDiameterChanged`.
+- Логика — `MapWindow/ViewModel/Tokens.cs`: команды в `MapSession`, кэш `tokenId → абсолютный путь к картинке`,
+  синхронизация `Tokens` из `Snapshot()`.
+- Диаметр всех токенов меняется одновременно: `SetDiameterCommand` в сессии пересчитывает `MapToken.Size`.
 
-## Зум и панорама (`MapWindow/ViewModel/ZoomPan.cs`)
+## Зум, панорама и диаметр (`MapWindow/ViewModel/ZoomPan.cs`)
 
-- `SetMapSize(w,h)` — из пикселей картинки; `SetViewportSize(w,h)` — из `MainCanvas.ActualWidth/Height`.
-- `RecalcOffset` — держит карту в границах: если карта меньше viewport по оси — центрирует, иначе зажимает смещение в `[viewport - scaled, 0]`.
-- `Pan(dx,dy)` — то же зажимание, возвращает фактически применённое смещение.
-- `ZoomAtPoint(point, zoom)` — зум к точке: считает сдвиг `dx/dy` из отношения масштабов, затем снова зажимает смещение. Кламп `[1..3]` — синхронизирован со свойством `Zoom` 2026-10-26 (раньше был `[1..5]` и за верхней границей смещение считалось от «чужого» масштаба).
+- Вся математика — `DnDMap.Core.Geometry.ViewGeometry`: `FitScale`, `MapToScreen`/`ScreenToMap`,
+  `MapRectToScreen`, `ZoomAtPoint`, `PanBy`, `ClampCenter`, `VisibleRect`.
+- `SetViewportSize(w,h)` → `MapSession.SetViewport`: кадр пересчитывается и центр прижимается к границам.
+- `ZoomAt(point, zoom)` — точка под курсором/пальцем остаётся на месте **при любом зуме** (в старом коде — только при 1×).
+- `ZoomTo(zoom)` — то же к центру вьюпорта (слайдер).
+- `PanByScreen(dx,dy)` — сдвиг кадра ровно на экранные пиксели.
+- `SetDiameter(refPx)` — клампится в 20–200 px эталонного экрана 1920×1080; в сессии переводится в px карты.
+- Кламп зума (`1..3`) и границы панорамы живут в `SessionOptions`/`ViewGeometry`, а не в WPF-свойствах.
 
 ## Схема координат (важно при доработках)
 
 ```
-Экран → (инверсия RenderTransform) → локальные координаты Canvas (0..viewport)
-Токены хранятся в локальных координатах Canvas.
-Ограничения панорамы считаются от _mapWidth/_mapHeight × Zoom (пиксели картинки).
-⚠️ Это две разные величины при несовпадении размера картинки и окна — см. troubleshooting (⏳).
+Экран (px окна)  ⇄  ViewGeometry.MapToScreen / ScreenToMap  ⇄  карта (px картинки)
+Токены в ядре хранятся в px карты (X/Y — центр).
+На экран они попадают уже пересчитанными: Left = centerX - Diameter/2.
+Диаметр: в сессии — px карты; API/слайдер — px эталонного экрана 1920×1080.
+Следствие: токен масштабируется вместе с картой (намеренное отличие от старого WPF).
 ```

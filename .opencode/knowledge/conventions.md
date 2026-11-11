@@ -1,6 +1,6 @@
 # Договорённости и конвенции
 
-Обновлено: 2026-10-26.
+Обновлено: 2026-11-11.
 
 ## Языки
 
@@ -15,17 +15,17 @@
 ## Стиль C#
 
 - `LangVersion = preview`, `Nullable = enable`, `ImplicitUsings = enable` (`DnDMap/DnDMap.csproj`).
-- Используются новые фичи C#: `field`-keyword в свойствах (`MapWindow/ViewModel/Properties.cs:11-17`), primary constructors (`TokenParams`, `ImageItem`), collection expressions `[]`.
+- Используются новые фичи C#: `field`-keyword в свойствах (`MapWindow/ViewModel/Properties.cs`), primary constructors (`ImageItem`, `TokenViewModel`), collection expressions `[]`.
 - **VM разбиваются по partial-файлам**: `*.cs` — конструктор/команды, `Properties.cs` — свойства и поля, отдельные файлы — логика по темам (`Tokens.cs`, `ZoomPan.cs`, `Methods.cs`). Новый код продолжать в том же стиле.
-- Модель тоже partial: `Token.Model.cs` (свойства) + `Token.Behavior.cs` (методы).
-- Статические глобальные настройки через `Core/GlobalSettings.cs` (static + event), не через DI.
-- `SetProperty(ref field, value)` из `ViewModelBase` — стандартный сеттер; для `double` есть отдельная перегрузка с допуском `000.1` (внимание: это не типографическая ошибка в docs, а реальная константа `000.1` в `ViewModelBase.cs:29`).
+- Состояние игры — только в ядре (`MapSession`); WPF-VM не хранит карту/токены/кадр, а переводит команды и снимки в экранные координаты.
+- Настройки, которые раньше были статикой (`GlobalSettings.TokenDiameter`), теперь живут в `MapSession` и меняются через `SetDiameterCommand`; список расширений — `PhysicalFileStore.SupportedExtensions` (ядро).
+- `SetProperty(ref field, value)` из `ViewModelBase` — стандартный сеттер; для `double` есть отдельная перегрузка с допуском `1e-9` (исправлено 2026-10-26, раньше было `0.1` и отсекало мелкие шаги).
 
 ## Именование и известные особенности имён
 
 - `Core/Converters/BoleanToVisibilityConverter.cs` — **опечатка в имени файла**, класс внутри называется `BooleanToVisibilityConverter`. Не «чинить» молча: имя файла правится вместе с обновлением ссылок.
-- `Token.Model.cs` / `Token.Behavior.cs` — точка вместо привычного суффикса.
-- Перечисления: `EntitySize` (Normal=1, Big=2, Huge=3) — значения используются как множитель диаметра, не менять без пересчёта `Token.Diameter`.
+- `Token.Model.cs` / `Token.Behavior.cs` — исторические имена, удалены в M1 (модель токена теперь `MapToken` в ядре).
+- Перечисления: `EntitySize` (Normal=1, Big=2, Huge=3) из ядра — значения используются как множитель диаметра, не менять без пересчёта `MapToken.Size`.
 
 ## Сборка и запуск
 
@@ -38,7 +38,7 @@ dotnet run --project DnDMap/DnDMap.csproj
 - SDK: `global.json` требует `8.0.0` c `rollForward: latestMajor` → на машине реально используется последний установленный (проверено: 10.0.302).
 - Целевая платформа `net10.0-windows7.0`, `UseWPF=true`, `UseWindowsForms=true` (нужен `FolderBrowserDialog`).
 - **Каталог вывода — вне репозитория**: `BaseOutputPath = ..\..\..\DndMap` относительно `DnDMap/DnDMap/`, то есть `C:\Users\User\source\DndMap\<Configuration>\`. Искать бинарники в `bin/` не нужно — их там нет; `AppendTargetFrameworkToOutputPath/AppendRuntimeIdentifierToOutputPath = false`.
-- Тестовых проектов нет; анализаторов/линтеров нет (кроме предупреждений SDK и NuGet). После удаления `squirrel.windows` (2026-10-26) сборка даёт только 3×CS8618.
+- Тестовый проект — `src/DnDMap.Core.Tests` (xUnit, 75 тестов). Анализаторов/линтеров нет; после M1 сборка идёт с **0 предупреждений**.
 
 ### Инсталлятор
 
@@ -52,7 +52,8 @@ dotnet run --project DnDMap/DnDMap.csproj
 - `publish/`, `/Setup/` (каталог инсталлятора), `bin/`, `obj/`, `.vs/` — в `.gitignore`.
 - В репозиторий **закоммичено**: 3 файла `.idea/.idea.DnDMap/.idea/*` (мелочь, не удалять без обсуждения) и `README.md`, `build-installer.ps1`, `.github/workflows/release.yml`.
 - **Новое и пока не отслеживаемое**: `DnDMap.iss` (инсталлятор) и `.opencode/` (база знаний) — при коммите текущего функционала добавить их вместе с `Paths.settings`/`Paths.Designer.cs`/`App.config`.
-- Рабочая копия содержит незакоммиченный функционал (пути, partial-рефакторинг, CI/инсталлятор) — см. decisions.md; не откатывать и не «приводить в порядок» без явной просьбы.
+- Рабочая копия содержит незакоммиченный функционал (пути, M1 — WPF на ядре) — см. decisions.md; не откатывать и не «приводить в порядок» без явной просьбы.
+- Ветка M0/M1 — `feature/15-m0-core` (от `master`); коммит M1 делается только по явной просьбе.
 
 ## Работа с файлами
 

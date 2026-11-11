@@ -1,6 +1,6 @@
 # Тема: ядро и веб-хост
 
-Обновлено: 2026-11-10. Статус: M0 завершён (ядро + тесты), M1–M4 — план.
+Обновлено: 2026-11-11. Статус: M0 и M1 завершены (ядро + тесты + WPF на ядре), M2–M4 — план.
 
 ## Зачем это
 
@@ -27,7 +27,7 @@
 | `src/DnDMap.Core` | `net10.0` | геометрия, модель сессии, хранилище, протокол — без UI |
 | `src/DnDMap.Server` | `net10.0` | HTTP-сервер: REST + SSE + статика (M2) |
 | `src/DnDMap.Core.Tests` | `net10.0` | xUnit-тесты ядра + legacy-parity |
-| `DnDMap` (WPF) | `net10.0-windows7.0` | старый UI; в M1 переводится на `DnDMap.Core` |
+| `DnDMap` (WPF) | `net10.0-windows7.0` | UI поверх `DnDMap.Core` (M1): мост «сессия ↔ экран» |
 | Android (M3) | `net10.0-android` | экран стола + хостинг сервера |
 
 Namespace'ы ядра — `DnDMap.Core.{Geometry,Model,Storage,Imaging,Protocol}` (`RootNamespace = DnDMap.Core`).
@@ -120,9 +120,11 @@ JSON-дискриминатор `type` (`JsonPolymorphic`), обязательн
 
 ## Что дальше (M1–M4)
 
-**M1 — WPF на ядре.** `EntitySize`/`RelayCommand`/`Token` → `DnDMap.Core`; `MapViewModel` → `MapSession` + `ViewGeometry`;
-рендер переписать в экранные координаты (`Image` в `MapRectToScreen` + абсолютные позиции токенов вместо
-`RenderTransform`). Ввод — курсор → `ScreenToMap` → `MoveTokenCommand`.
+**M1 — WPF на ядре (завершён 2026-11-11).** `MapViewModel` стал мостом над `MapSession`: состояние, команды
+и геометрия — в ядре; WPF только переводит кадр в экранные координаты и обратно. Рендер переписан без
+`RenderTransform`; ввод идёт через `ScreenToMap`. Дубли `EntitySize`/`Token`/`TokenParams`/`GlobalSettings`
+удалены, `ViewModelBase`/`RelayCommand` оставлены как UI-обвязка. Подробности — [decisions.md](../decisions.md),
+рендер и ввод — [ui-and-interaction.md](ui-and-interaction.md).
 
 **M2 — сервер.** `TcpListener`, маршруты (черновик):
 `GET /` (SPA), `GET /api/session`, `POST /api/commands`, `GET /api/events` (SSE),

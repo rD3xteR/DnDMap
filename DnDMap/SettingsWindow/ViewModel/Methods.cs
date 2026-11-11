@@ -1,4 +1,4 @@
-﻿using DnDMap.Core;
+﻿using DnDMap.Core.Storage;
 using DnDMap.Models;
 using System.IO;
 using System.Windows.Input;
@@ -60,7 +60,7 @@ namespace DnDMap.SettingsWindow.ViewModel
         {
             if (SelectedToken is null || SelectedEntitySize is null) return;
 
-            _mapViewModel.AddToken(new Core.Parameters.TokenParams((Core.Enums.EntitySize)SelectedEntitySize, SelectedToken.Path));
+            _mapViewModel.AddToken(SelectedToken.Path, SelectedEntitySize.Value);
         }
 
         private void OpenMap()
@@ -97,7 +97,7 @@ namespace DnDMap.SettingsWindow.ViewModel
             try
             {
                 var imageFiles = Directory.GetFiles(directory, "*.*", SearchOption.TopDirectoryOnly)
-                    .Where(file => GlobalSettings.SupportedExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
+                    .Where(file => PhysicalFileStore.SupportedExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
                     .Select(f => new ImageItem(Path.GetFileName(f), f))
                     .ToList();
 

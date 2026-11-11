@@ -3,7 +3,7 @@
 Проект: приложение для показа карт Dungeons & Dragons на экране с токенами существ и персонажей.
 Сейчас это WPF-десктоп; идёт переезд на схему «ядро + веб-сервер + Android-хост» (self-host в локальной сети).
 Репозиторий: https://github.com/rD3xteR/DnDMap
-Последнее обновление: 2026-11-10
+Последнее обновление: 2026-11-11
 
 | Файл | Содержание |
 | --- | --- |
@@ -26,10 +26,11 @@
 
 ## Что сейчас в рабочей копии
 
-Проверено 2026-11-10:
+Проверено 2026-11-11:
 
-- **Не закоммичено** (по просьбе пользователя): новые проекты `src/DnDMap.Core`, `src/DnDMap.Server`, `src/DnDMap.Core.Tests`
-  и изменения `DnDMap.sln`. WPF-проект не менялся.
-- Ранее не закоммичено: персистентность путей (`Paths.settings`, `Paths.Designer.cs`, `App.config`),
-  разбиение `MapViewModel` на `Tokens.cs` / `ZoomPan.cs`, зум/панорама с ограничением границ, русские подписи.
-- Подробности — в [decisions.md](decisions.md) и [troubleshooting.md](troubleshooting.md).
+- **Закоммичено** `a286db0` `feat: add shared core, session model and core tests (#15)` — ядро, каркас сервера, 75 тестов.
+- **Не закоммичено** (M1, по просьбе пользователя): WPF переведён на `DnDMap.Core` —
+  `MapViewModel` стал мостом над `MapSession`, рендер в экранных координатах, удалены дубли
+  (`GlobalSettings`, `EntitySize`, `TokenParams`, `Token`, `EntitySizeItem`), добавлен `TokenViewModel`.
+- Ранее не закоммичено: персистентность путей (`Paths.settings`, `Paths.Designer.cs`, `App.config`).
+- Подробности — в [decisions.md](decisions.md), [architecture.md](architecture.md) и [troubleshooting.md](troubleshooting.md).

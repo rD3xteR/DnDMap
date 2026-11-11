@@ -1,23 +1,22 @@
 # Глоссарий
 
-Обновлено: 2026-11-10.
+Обновлено: 2026-11-11.
 
 | Термин | Значение в проекте |
 | --- | --- |
 | **Карта (map)** | Изображение-подложка боя (`.png/.jpg/.jpeg`), отображается как фон холста в `MapWindow`. |
-| **Токен (Token)** | Круглая иконка существа/персонажа поверх карты. Модель — `DnDMap/TokenModel/Token.Model.cs`. |
+| **Токен (Token)** | Круглая иконка существа/персонажа поверх карты. В ядре — `MapToken` (`DnDMap.Core.Model`), в WPF — `TokenViewModel` (`MapWindow/ViewModel/TokenViewModel.cs`). |
 | **«Управление»** | Стартовое окно `SettingsWindow`: выбор карты, параметры круга, галерея изображений. |
 | **`SettingsViewModel`** | VM окна «Управление»; владеет `MapViewModel`, команды обзора/открытия/добавления, сохранение путей. |
-| **`MapViewModel`** | VM окна карты; partial-класс: `MainViewModel.cs` (открытие/закрытие), `Properties.cs` (свойства), `Tokens.cs` (токены), `ZoomPan.cs` (зум/панорама). |
-| **`EntitySize`** | Категория размера существа: `Normal=1`, `Big=2`, `Huge=3`. Значение = множитель к базовому диаметру. |
-| **Диаметр (базовый)** | `GlobalSettings.TokenDiameter`, по умолчанию 100, слайдер 20–200. Итоговый размер токена = базовый × `EntitySize`. |
-| **`TokenParams`** | Значимая пара «размер + путь к картинке», передаётся в `AddToken`. |
+| **`MapViewModel`** | VM окна карты — мост WPF ↔ ядро: команды в `MapSession`, снимок → экранные координаты, hit-test и ввод. Partial: `MainViewModel.cs` (окно/карта), `Properties.cs` (свойства), `Tokens.cs` (токены), `ZoomPan.cs` (кадр). |
+| **`MapToken`** | Токен в ядре: `Id` (string), `File`, `EntitySize`, `X/Y` (центр в px карты), `Size` (диаметр в px карты). |
+| **`TokenViewModel`** | WPF-представление токена: `Left/Top/Diameter` в px окна + `ImagePath` (абсолютный путь, известен только WPF). |
+| **`EntitySize`** | Категория размера существа из ядра: `Normal=1`, `Big=2`, `Huge=3`. Значение = множитель к базовому диаметру. |
+| **Диаметр (базовый)** | `SessionOptions.DefaultDiameterReferencePx` = 100 px эталонного экрана, слайдер 20–200. В сессии хранится в px карты: `mapPx = refPx / fitRef`. Итог = базовый × `EntitySize`. |
 | **`ImageItem`** | Элемент списка картинок: `Name` (короткое имя файла) + `Path` (полный путь). |
 | **`Paths`** | Генерируемый класс пользовательских настроек (`Paths.settings` → `Paths.Designer.cs`): `MapsPath`, `TokensPath`. Сохраняется в `user.config` при закрытии «Управления». |
-| **`GlobalSettings`** | Статический класс настроек приложения + событие `TokenDiameterChanged` (оповещение всех токенов о смене размера) и `SupportedExtensions`. |
-| **Zoom / Offset** | Масштаб (1×–3×) и смещение холста; применяются через `RenderTransform` (Scale + Translate). |
-| **Viewport** | Видимая область холста (`MainCanvas.ActualWidth/Height`); от неё считаются границы панорамы. |
-| **`RecalcOffset`** | Пересчёт смещения так, чтобы карта не выходила за границы и центрировалась, если меньше viewport. |
+| **Zoom / ViewState** | Масштаб 1×–3× относительно fit + центр кадра в px карты; в WPF применяется расчётом экранных координат, без `RenderTransform`. |
+| **Viewport** | Видимая область (`MainCanvas.ActualWidth/Height` в WPF); хост сообщает её сессии через `SetViewport`. |
 | **Inno Setup / ISCC** | Технология установщика (с 2026-10-26): `DnDMap.iss` компилируется `ISCC.exe` в `Setup\DnDMap-Setup.exe`. Установка для текущего пользователя, без UAC. |
 | **Squirrel / releasify** | Устаревшая технология установщика (до 2026-10-26): пакет `squirrel.windows` 2.0.1 + `Squirrel.exe --releasify`. Удалена из проекта, оставлена только в истории (см. decisions/troubleshooting). |
 | **Self-contained** | Режим публикации: приложение включает .NET-рантайм — на машине игрока ничего устанавливать не нужно (артефакт больше). |

@@ -1,32 +1,42 @@
-﻿using DnDMap.TokenModel;
-using System.Collections.ObjectModel;
-using Point = System.Windows.Point;
+﻿using System.Collections.ObjectModel;
+using System.Windows.Media;
 
-namespace DnDMap.MapWindow.ViewModel
+namespace DnDMap.MapWindow.ViewModel;
+
+public partial class MapViewModel
 {
-    public partial class MapViewModel
-    {
-        #region Properties
+    #region Properties
 
-        public string? MapPath { get; set => SetProperty(ref field, value); }
-        public Token? SelectedToken { get; set => SetProperty(ref field, value); }
-        public ObservableCollection<Token> Tokens { get; set => SetProperty(ref field, value); } = [];
+    /// <summary>Полный путь к открытой карте (нужен только WPF, в ядро не попадает).</summary>
+    public string? MapPath { get; private set => SetProperty(ref field, value); }
 
-        public double Zoom { get; set => SetProperty(ref field, Math.Max(1, Math.Min(3, value))); } = 1.0;
-        public double OffsetX { get; set => SetProperty(ref field, value); } = 0;
-        public double OffsetY { get; set => SetProperty(ref field, value); } = 0;
+    public ImageSource? MapImageSource { get; private set => SetProperty(ref field, value); }
 
-        public Point? SelectedTokenOffset { get; set; }
+    /// <summary>Токены в экранных координатах — пересобираются из снимка сессии.</summary>
+    public ObservableCollection<TokenViewModel> Tokens { get; } = [];
 
-        #endregion
+    public string? SelectedTokenId { get; private set => SetProperty(ref field, value); }
 
+    /// <summary>Зум относительно вписанной карты (1..3), значение сессии.</summary>
+    public double Zoom => _session.View.Zoom;
 
-        #region Fields
+    /// <summary>Базовый диаметр токена в пикселях эталонного экрана 1920×1080.</summary>
+    public double ReferenceDiameter { get; private set; }
 
-        private MapWindow _window;
-        private double _mapWidth, _mapHeight;
-        private double _viewportWidth, _viewportHeight;
+    // Положение карты на экране в пикселях окна.
+    public double MapLeft { get; private set => SetProperty(ref field, value); }
 
-        #endregion
-    }
+    public double MapTop { get; private set => SetProperty(ref field, value); }
+
+    public double MapWidth { get; private set => SetProperty(ref field, value); }
+
+    public double MapHeight { get; private set => SetProperty(ref field, value); }
+
+    #endregion
+
+    #region Fields
+
+    private MapWindow? _window;
+
+    #endregion
 }

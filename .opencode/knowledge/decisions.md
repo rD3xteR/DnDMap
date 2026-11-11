@@ -129,3 +129,52 @@ Issue с этим планом: https://github.com/rD3xteR/DnDMap/issues/15 (с�
 - `ValidateName` (только `[A-Za-z0-9._-]`) слишком строг для имён с ноутбука: пробелы и кириллица — обычное дело.
   Правило пересмотреть в M2 (ослабить или санитизировать с сохранением исходного имени).
 - Коллизии имён (`map.png` из разных папок) — при разном хэше переименовывать, а не перезаписывать.
+
+## 2026-11-11 — M1: WPF переведён на общее ядро
+
+Сделано (по просьбе пользователя «сделай переход с WPF на ядро»):
+
+- `DnDMap/DnDMap.csproj` ссылается на `src/DnDMap.Core`; WPF-проект использует типы ядра
+  (`MapSession`, `ViewGeometry`, `EntitySize`, `Command`), своих дублей больше нет.
+- `MapViewModel` переписан в **мост**: единственное состояние — `MapSession`, все изменения — командами.
+  Partial-файлы сохранили прежние роли: `MainViewModel` (окно/карта), `Properties` (привязки),
+  `Tokens` (токены + hit-test), `ZoomPan` (кадр).
+- Рендер переведён в **экранные координаты**: у `Canvas` больше нет `RenderTransform`; карта — `Image`
+  с `Canvas.Left/Top/Width/Height` из `ViewGeometry.MapRectToScreen`, токены — `TokenViewModel`
+  с готовыми `Left/Top/Diameter`. Это то же представление, что получит веб-клиент.
+- Ввод: `e.GetPosition(MainCanvas)` — это уже пиксели окна; в пиксели карты переводит `ScreenToMap`.
+  Панорама — `PanByScreen`, зум — `ZoomAt` (точка под курсором держится при любом зуме).
+- Удалены дубли: `Core/GlobalSettings.cs`, `Core/Enums/EntitySize.cs`, `Core/Parameters/TokenParams.cs`,
+  `TokenModel/Token.Model.cs`, `TokenModel/Token.Behavior.cs`, `Models/EntitySizeItem.cs`.
+  `ViewModelBase`/`RelayCommand`/конвертеры оставлены в WPF как UI-обвязка.
+- Токены, добавленные до открытия карты, копятся в `_pendingTokens` и применяются после `SetMap`
+  (сохранено старое поведение «можно готовить заранее»).
+- Слайдер диаметра теперь идёт в `MapViewModel.SetDiameter` (px эталона 1920×1080), а не в статику.
+- **Сенсорный ввод удалён** по просьбе пользователя (2026-11-11): из `MapWindow.xaml`/`.xaml.cs` убраны
+  `IsManipulationEnabled`, `StylusDown` и все `Manipulation*`-обработчики с полями мультитача.
+  Управление — только мышью (драг токена, панорама, Ctrl+колесо, слайдер, Reset, Delete).
+
+Технические решения по ходу:
+
+- **Абсолютный путь картинки** в ядро не попадает: сессия хранит только `MapToken.File`. WPF держит
+  `tokenId → путь` в `MapViewModel._tokenImagePaths`; если токен пришёл не от WPF — путь собирается
+  из `Paths.Default.TokensPath + File`.
+- `MapSession.Changed` поднимается **синхронно** внутри `Apply`, поэтому при `AddToken` представление
+  создаётся раньше, чем известен путь к файлу. Решение: `TokenViewModel.ImagePath` изменяемый и
+  обновляется каждым `Refresh`, а `AddToken` после записи пути вызывает `Refresh()` ещё раз.
+- `OpenWindow` разделён на `OpenWindow` (показать окно) и `OpenMap` (только состояние + раскладка) —
+  так мост проверяется без WPF-окна.
+
+Проверка:
+
+- `dotnet build DnDMap.sln -c Debug` и `-c Release` → 0 ошибок, 0 предупреждений (3×CS8618 исчезли
+  вместе с удалёнными файлами).
+- `dotnet test src/DnDMap.Core.Tests` → 75/75.
+- Внерепозиторный smoke-тест моста (34 проверки): раскладка карты, hit-test, драг, зум к точке,
+  панорама, диаметр/кламп, pending-токены, `OnClosing` → все зелёные.
+- Живой запуск `DnDMap.exe`: стартовое окно работает.
+- Issue #15: https://github.com/rD3xteR/DnDMap/issues/15 (ветка `feature/15-m0-core`).
+
+Не сделано: HTTP-сервер и веб-клиент (M2), Android (M3), CI для APK (M4).
+
+Коммит: `feat: run WPF app on shared core, drop touch input (#15)`.

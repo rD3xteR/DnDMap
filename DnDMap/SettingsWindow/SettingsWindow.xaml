@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:DnDMap.SettingsWindow"
         xmlns:vm="clr-namespace:DnDMap.SettingsWindow.ViewModel"
         xmlns:ext="clr-namespace:DnDMap.Core.Extensions"
-        xmlns:enums="clr-namespace:DnDMap.Core.Enums"
+        xmlns:enums="clr-namespace:DnDMap.Core.Model;assembly=DnDMap.Core"
         mc:Ignorable="d"
         MinHeight="370" MinWidth="450"
         Title="Управление" Height="600" Width="800"

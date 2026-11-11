@@ -1,5 +1,4 @@
-﻿using DnDMap.Core;
-using DnDMap.Core.Enums;
+﻿using DnDMap.Core.Model;
 using DnDMap.MapWindow.ViewModel;
 using DnDMap.Models;
 using System.Collections.ObjectModel;
@@ -12,13 +11,14 @@ namespace DnDMap.SettingsWindow.ViewModel
 
         public double DiameterToChange
         {
-            get => GlobalSettings.TokenDiameter;
+            get => _mapViewModel.ReferenceDiameter;
             set
             {
-                if (GlobalSettings.TokenDiameter == value)
+                var rounded = Math.Round(value, 0);
+                if (Math.Abs(_mapViewModel.ReferenceDiameter - rounded) < 1e-9)
                     return;
 
-                GlobalSettings.TokenDiameter = Math.Round(value, 0);
+                _mapViewModel.SetDiameter(rounded);
                 OnPropertyChanged();
             }
         }

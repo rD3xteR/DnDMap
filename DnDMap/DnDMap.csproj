@@ -19,6 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\src\DnDMap.Core\DnDMap.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Update="Paths.Designer.cs">
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>

@@ -3,8 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:DnDMap"
-        xmlns:model="clr-namespace:DnDMap.TokenModel"
+        xmlns:vm="clr-namespace:DnDMap.MapWindow.ViewModel"
         mc:Ignorable="d"
         Title="Draggable Circles" 
         WindowStyle="None"
@@ -18,41 +17,43 @@
 
     <Grid Background="Black">
         <Border ClipToBounds="True" Background="Black">
+            <!-- Canvas живёт в экранных координатах: карта и токены позиционируются
+                 из visibleRect/MapToScreen ядра, без RenderTransform. -->
             <Canvas x:Name="MainCanvas"
+                    Background="Black"
                     MouseLeftButtonDown="MainCanvas_MouseLeftButtonDown"
                     MouseMove="MainCanvas_MouseMove"
                     MouseLeftButtonUp="MainCanvas_MouseLeftButtonUp"
-                    MouseWheel="MainCanvas_MouseWheel"
-                    IsManipulationEnabled="True"
-                    StylusDown="MainCanvas_StylusDown"
-                    ManipulationStarting="MainCanvas_ManipulationStarting"
-                    ManipulationStarted="MainCanvas_ManipulationStarted"
-                    ManipulationDelta="MainCanvas_ManipulationDelta"
-                    ManipulationCompleted="MainCanvas_ManipulationCompleted"
-                    ManipulationBoundaryFeedback="MainCanvas_ManipulationBoundaryFeedback">
-                <Canvas.RenderTransform>
-                    <TransformGroup>
-                        <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
-                        <TranslateTransform X="{Binding OffsetX}" Y="{Binding OffsetY}" />
-                    </TransformGroup>
-                </Canvas.RenderTransform>
+                    MouseWheel="MainCanvas_MouseWheel">
 
-                <ItemsControl ItemsSource="{Binding Tokens}">
+                <Image Source="{Binding MapImageSource}"
+                       Width="{Binding MapWidth}"
+                       Height="{Binding MapHeight}"
+                       Canvas.Left="{Binding MapLeft}"
+                       Canvas.Top="{Binding MapTop}"
+                       Stretch="Fill"
+                       IsHitTestVisible="False"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+
+                <ItemsControl ItemsSource="{Binding Tokens}"
+                              Width="{Binding ActualWidth, ElementName=MainCanvas}"
+                              Height="{Binding ActualHeight, ElementName=MainCanvas}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <Canvas/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type model:Token}">
-                            <Grid>
-                                <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}" Fill="White"/>
-                                <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}" Stroke="Black" StrokeThickness="3">
+                        <DataTemplate DataType="{x:Type vm:TokenViewModel}">
+                            <Grid Width="{Binding Diameter}" Height="{Binding Diameter}">
+                                <Ellipse Fill="White"/>
+                                <Ellipse Stroke="Black" StrokeThickness="3">
                                     <Ellipse.Fill>
-                                        <ImageBrush ImageSource="{Binding ImagePath, UpdateSourceTrigger=PropertyChanged}" Stretch="Fill" />
+                                        <ImageBrush ImageSource="{Binding ImagePath, UpdateSourceTrigger=PropertyChanged}"
+                                                    Stretch="Fill"/>
                                     </Ellipse.Fill>
                                 </Ellipse>
-                                <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}" Stroke="IndianRed" Fill="LightGray"
+                                <Ellipse Stroke="IndianRed" Fill="LightGray"
                                          Opacity="0.5" StrokeThickness="3"
                                          Visibility="{Binding IsSelected, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                             </Grid>
@@ -60,21 +61,11 @@
                     </ItemsControl.ItemTemplate>
                     <ItemsControl.ItemContainerStyle>
                         <Style TargetType="ContentPresenter">
-                            <Setter Property="Canvas.Left" Value="{Binding X, Mode=OneWay}"/>
-                            <Setter Property="Canvas.Top" Value="{Binding Y, Mode=OneWay}"/>
+                            <Setter Property="Canvas.Left" Value="{Binding Left, Mode=OneWay}"/>
+                            <Setter Property="Canvas.Top" Value="{Binding Top, Mode=OneWay}"/>
                         </Style>
                     </ItemsControl.ItemContainerStyle>
                 </ItemsControl>
-
-                <Canvas.Background>
-                    <!-- Alignment Left/Top фиксирует картинку в (0,0) координат canvas:
-                         центрирование на экране делает RecalcOffset через OffsetX/OffsetY,
-                         иначе вёрстка clamp в Pan/ZoomAtPoint рассыпается. -->
-                    <ImageBrush ImageSource="{Binding MapPath, UpdateSourceTrigger=PropertyChanged}"
-                                Stretch="Uniform"
-                                AlignmentX="Left"
-                                AlignmentY="Top"/>
-                </Canvas.Background>
             </Canvas>
         </Border>
         
@@ -84,7 +75,7 @@
                     Background="Transparent">
             <Slider x:Name="ZoomSlider" 
                     Minimum="1" Maximum="3.0" 
-                    Value="{Binding Zoom, Mode=TwoWay}" 
+                    Value="{Binding Zoom, Mode=OneWay}" 
                     Width="20" 
                     Height="300"
                     Orientation="Vertical"

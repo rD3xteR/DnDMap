@@ -1,12 +1,11 @@
 # Архитектура DnDMap
 
-Обновлено: 2026-11-10. Код ссылается на файлы в рабочей копии.
+Обновлено: 2026-11-11 (M1: WPF работает на общем ядре). Код ссылается на файлы в рабочей копии.
 
 ## Общая схема
 
-Один WPF-проект (`DnDMap/DnDMap.csproj`, `net10.0-windows7.0`), MVVM без фреймворков:
-свой `ViewModelBase` (`Core/BaseClasses/ViewModelBase.cs`) и свой `RelayCommand` (`Core/Command/RelayCommand.cs`).
-DI-контейнера нет — все связи создаются вручную.
+Сейчас три рабочих проекта: WPF-оболочка, ядро и каркас сервера. UI — MVVM без фреймворков:
+свой `ViewModelBase` и `RelayCommand` остались в WPF-проекте как UI-обвязка, состояние игры — в ядре.
 
 ```
 App.xaml (StartupUri = SettingsWindow)
@@ -14,61 +13,78 @@ App.xaml (StartupUri = SettingsWindow)
          ├── владеет единственным экземпляром MapViewModel  (Properties.cs:44)
          ├── Paths.Default  →  сохранение путей при закрытии окна (Methods.cs:15-21)
          └── MapViewModel.OpenWindow(path)
-               └── MapWindow  (безрамочное окно на весь экран, DataContext = этот MapViewModel)
-                     ├── Token  (TokenModel/) — коллекция Tokens
-                     ├── GlobalSettings (static) — диаметр, событие TokenDiameterChanged
-                     └── ZoomPan.cs — зум/панорама с ограничением границ
+               ├── MapSession  (DnDMap.Core.Model) — карта, токены, кадр, диаметр
+               ├── MapWindow  (безрамочное окно на весь экран, DataContext = этот MapViewModel)
+               │     ├── MapViewModel.HitTest / BeginTokenDrag / DragToken …  → команды в сессию
+               │     ├── TokenViewModel (экранные координаты)  → коллекция Tokens
+               │     └── ZoomPan.cs — зум/панорама через ViewGeometry
+               └── ImageSource карты — грузится в память (BitmapCacheOption.OnLoad)
 ```
 
 ## Точки входа
 
 - `DnDMap/App.xaml:6` — `StartupUri="SettingsWindow/SettingsWindow.xaml"`, стартовое окно «Управление».
-- `DnDMap/App.xaml.cs:10` — `ShutdownMode = OnMainWindowClose`: закрытие стартового окна завершает всё приложение (включая окно карты).
-- Окно карты создаётся кодом: `MapWindow/ViewModel/MainViewModel.cs:14-23` (`OpenWindow`).
+- `DnDMap/App.xaml.cs:10` — `ShutdownMode = OnMainWindowClose`: закрытие стартового окна завершает всё приложение.
+- Окно карты создаётся кодом: `MapWindow/ViewModel/MainViewModel.cs` (`OpenWindow`).
 
 ## Владение окнами и ViewModel
 
-- `SettingsViewModel` создаёт **один** `MapViewModel` (`SettingsWindow/ViewModel/Properties.cs:44`) и передаёт его в `MapViewModel.OpenWindow` как `DataContext` нового `MapWindow` (`MainViewModel.cs:16-17`).
-- В `MapWindow.xaml:16-18` тоже объявлен `DataContext` (`<vm:MapViewModel/>`) — он перезаписывается в `OpenWindow`, фактически это мёртвый экземпляр.
-- Окно карты не становится `MainWindow`, поэтому правило «закрыл главное окно — приложение завершилось» относится к «Управлению».
+- `SettingsViewModel` создаёт **один** `MapViewModel` (`SettingsWindow/ViewModel/Properties.cs:44`) и передаёт его
+  в `MapWindow` как `DataContext`. `MapWindow.xaml` больше не объявляет свой `DataContext` — мёртвого экземпляра нет.
+- Окно карты не становится `MainWindow`: «закрыл главное окно — приложение завершилось» относится к «Управлению».
+- Закрытие окна карты (`Closed` → `vm.OnClosing`) сбрасывает сессию: создаётся новый `MapSession`,
+  очищаются токены, пути картинок и открытая карта.
 
 ## Потоки данных
 
-1. **Выбор папок** — `SettingsViewModel.BrowseMaps/BrowseTokens` (`Methods.cs:23-49`) → `FolderBrowserDialog` (WinForms, проект подключает `UseWindowsForms=true`) → `GetImages` читает файлы с расширениями из `GlobalSettings.SupportedExtensions` (`.png/.jpg/.jpeg`) → `ObservableCollection<ImageItem>`.
-2. **Открытие карты** — `OpenMap` (`Methods.cs:66-71`) → `MapViewModel.OpenWindow(path)` → `MapPath` (привязка к `ImageBrush` фона canvas) + `SetMapSize` по пиксельным размерам картинки (`MainViewModel.cs:21-22`).
-3. **Добавление токена** — `AddToken` (`Methods.cs:59-64`) → `TokenParams(EntitySize, path)` → `MapViewModel.AddToken` (`Tokens.cs:9-12`) → `new Token(...)`. **Координаты не задаются** — токен появляется в (0,0) (см. issue #4 и troubleshooting).
-4. **Перемещение токена** — `MapWindow.xaml.cs` (mouse-хендлеры) → инверсия `RenderTransform` (`TransformToMap`, строки 38-50) → `SetSelectedToken` / `MoveSelectedToken` (`Tokens.cs`) → свойства `Token.X/Y` → привязки `Canvas.Left/Top`.
-5. **Смена размера токенов** — слайдер «Диаметр» → `SettingsViewModel.DiameterToChange` → static `GlobalSettings.TokenDiameter` → событие `TokenDiameterChanged` → `MapViewModel.OnGlobalTokenSizeChanged` → `Token.Diameter` (=`TokenDiameter × (int)EntitySize`) (`Tokens.cs:35-41`, `Token.Model.cs:31`).
+1. **Выбор папок** — `SettingsViewModel.BrowseMaps/BrowseTokens` → `FolderBrowserDialog`
+   (WinForms, `UseWindowsForms=true`) → `GetImages` фильтрует по `PhysicalFileStore.SupportedExtensions` (`.png/.jpg/.jpeg`)
+   → `ObservableCollection<ImageItem>`.
+2. **Открытие карты** — `SettingsViewModel.OpenMap` → `MapViewModel.OpenWindow(path)` → `OpenMap`:
+   `LoadImage` (в память, файл не блокируется) → `SetMapCommand(name, w, h)` → `MapImageSource`
+   → экранная раскладка из `ViewGeometry.MapRectToScreen`.
+3. **Добавление токена** — `MapViewModel.AddToken(path, EntitySize)` → `AddTokenCommand(file, size)`
+   без координат → ядро ставит токен **в центр карты**. Абсолютный путь картинки запоминается в WPF-кэше
+   `tokenId → path`. До открытия карты запросы копятся в `_pendingTokens` и применяются после `SetMap`.
+4. **Перемещение токена** — mouse/манипуляция в пикселях окна → `ScreenToMap` → `MoveTokenCommand` (px карты).
+5. **Смена размера токенов** — слайдер «Диаметр» → `SettingsViewModel.DiameterToChange` → `MapViewModel.SetDiameter`
+   (px эталонного экрана 1920×1080) → `SetDiameterCommand` → `MapToken.Size` в px карты.
 
 ## Рендеринг и координаты
 
-- Карта — `Canvas.Background` c `ImageBrush Stretch="Uniform"` (`MapWindow.xaml:67-69`); токены — `ItemsControl` с панелью `Canvas`, позиционирование через `Canvas.Left/Top` (`MapWindow.xaml:38-65`).
-- Трансформация холста: `ScaleTransform(Zoom)` + `TranslateTransform(OffsetX/OffsetY)` (`MapWindow.xaml:31-36`).
-- Ограничения: `Zoom` в свойстве зажат в `[1..3]` (`Properties.cs:15`), панорама не даёт увести карту за границы (`ZoomPan.cs:RecalcOffset/Pan`).
-- Токен рисуется тремя `Ellipse`: подложка (белая), картинка, полупрозрачный оверлей выделения (`MapWindow.xaml:47-55`).
+- Рендер — **в экранных координатах**, без `RenderTransform` (`MapWindow.xaml`):
+  - карта — `Image` с `Canvas.Left/Top = MapLeft/MapTop` и `Width/Height = MapWidth/MapHeight`
+    из `ViewGeometry.MapRectToScreen`;
+  - токены — `ItemsControl` с панелью `Canvas`, `TokenViewModel.Left/Top/Diameter` уже в px окна.
+- Общая модель: токены в ядре хранятся в **пикселях карты**, кадр — центр в px карты + зум относительно fit.
+  WPF-мост только переводит кадр в экранные координаты и обратно — та же математика, что будет у веб-клиента.
+- Токен рисуется тремя `Ellipse`: подложка (белая), картинка, полупрозрачный оверлей выделения.
+- Ограничения кадра (зум 1..3, границы панорамы) — в ядре (`SessionOptions`, `ViewGeometry`), не в WPF-свойствах.
 
 ## Границы модулей
 
 | Модуль | Зависит от | Назначение |
 | --- | --- | --- |
-| `Core/` | WPF (только `MarkupExtension`, `ICommand`) | базовые классы, настройки, перечисления, конвертеры |
-| `TokenModel/` | `Core/` | модель токена (`Token.Model.cs`) и её поведение (`Token.Behavior.cs`) |
-| `Models/` | `Core/` | DTO для списков: `ImageItem`, `EntitySizeItem` |
-| `MapWindow/` | `TokenModel/`, `Core/` | окно карты + `MapViewModel` (partial: `MainViewModel`, `Properties`, `Tokens`, `ZoomPan`) |
-| `SettingsWindow/` | `MapWindow.ViewModel`, `Core/`, `Models/` | окно «Управление» + `SettingsViewModel` (partial: `SettingsViewModel`, `Properties`, `Methods`) |
+| `src/DnDMap.Core` | только BCL | геометрия кадра, сессия, команды, хранилище, размеры изображений |
+| `DnDMap/Core/` | WPF (`ICommand`, `MarkupExtension`) | `ViewModelBase`, `RelayCommand`, конвертеры, расширения разметки |
+| `DnDMap/Models/` | — | DTO списков: `ImageItem` |
+| `DnDMap/MapWindow/` | `DnDMap.Core`, `Core/` | окно карты + `MapViewModel` (partial: `MainViewModel`, `Properties`, `Tokens`, `ZoomPan`) + `TokenViewModel` |
+| `DnDMap/SettingsWindow/` | `MapWindow.ViewModel`, `DnDMap.Core`, `Models/` | окно «Управление» + `SettingsViewModel` |
 
-Обратите внимание на связь **SettingsWindow → MapViewModel**: окно настроек создаёт и владеет VM окна карты — это главная точка связанности при рефакторинге.
+Удалены как дубли ядра: `Core/GlobalSettings.cs`, `Core/Enums/EntitySize.cs`, `Core/Parameters/TokenParams.cs`,
+`TokenModel/*`, `Models/EntitySizeItem.cs`.
+
+Связь **SettingsWindow → MapViewModel** осталась: окно настроек создаёт и владеет VM окна карты.
+Это главная точка связанности при дальнейшем рефакторинге (в M2 на её месте появится клиент протокола).
 
 ## Персистентность
 
-- Пути к папкам карт/токенов: пользовательские настройки .NET (`Paths.settings` → `Paths.Designer.cs`, секция `DnDMap.Paths` в `App.config`), сохраняются в `SettingsViewModel.OnClosing` (`Methods.cs:15-21`).
-- Токены, открытая карта, масштаб — **не сохраняются**; при закрытии окна карты сбрасываются (`MainViewModel.cs:25-31`).
+- Пути к папкам карт/токенов: пользовательские настройки .NET (`Paths.settings` → `Paths.Designer.cs`,
+  секция `DnDMap.Paths` в `App.config`), сохраняются в `SettingsViewModel.OnClosing`.
+- Токены, открытая карта, масштаб — **не сохраняются**; при закрытии окна карты сбрасываются.
 - Эти три файла в текущей рабочей копии не отслеживаются git (см. troubleshooting).
 
-## Слой ядра и сервера (M0, 2026-11-10)
-
-WPF-проект пока **не переведён** на ядро — это следующий шаг (M1). Новые проекты лежат в `src/`
-и собираются вместе с решением:
+## Слой ядра и сервера
 
 | Проект | TFM | Назначение | Состояние |
 | --- | --- | --- | --- |
@@ -76,12 +92,12 @@ WPF-проект пока **не переведён** на ядро — это �
 | `src/DnDMap.Server` | net10.0 | HTTP-сервер на BCL (`TcpListener`) | каркас: только `ServerOptions` |
 | `src/DnDMap.Core.Tests` | net10.0 | xUnit-тесты ядра | 75 тестов, все зелёные |
 
-Поток данных после переезда (целевой):
+Поток данных после M1:
 
 ```
-MapSession (Core)  ←  Command (POST /api/commands)
+MapSession (Core)  ←  Command (WPF-мост сейчас, POST /api/commands в M2)
       │ Changed(SessionChange)
-      ├── WPF-мост (M1): ViewState → экранные координаты
+      ├── WPF-мост: Snapshot() → экранные координаты (MapLeft/MapTop, TokenViewModel)
       └── SSE-рассылка (M2): все браузеры получают visibleRect + токены
 ```
 
@@ -105,5 +121,6 @@ MapSession (Core)  ←  Command (POST /api/commands)
 - На планшете **нет библиотеки и UI управления файлами**: только кэш текущей сессии.
 - Перед `setMap`/`addToken` сервер проверяет наличие файла в кэше — иначе в состоянии появилась бы битая ссылка.
 - `MapSession` о файловой системе не знает; проверка — на уровне сервера (M2).
+- WPF по-прежнему работает с обычными папками пользователя (`Paths.Default.MapsPath/TokensPath`).
 - Имена файлов с ноутбука (пробелы, кириллица) текущим `ValidateName` не проходят — правило меняется в M2
   (см. [decisions.md](decisions.md) и [troubleshooting.md](troubleshooting.md)).
