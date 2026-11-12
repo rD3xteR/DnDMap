@@ -13,6 +13,7 @@ namespace DnDMap.SettingsWindow.ViewModel
             BrowseTokensCommand = new RelayCommand(BrowseTokens);
             AddTokenCommand = new RelayCommand(AddToken);
             OpenMapCommand = new RelayCommand(OpenMap);
+            ToggleServerCommand = new RelayCommand(ToggleServer);
 
             #endregion
 

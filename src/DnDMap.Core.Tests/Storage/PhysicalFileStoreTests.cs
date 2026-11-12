@@ -73,10 +73,12 @@ public sealed class PhysicalFileStoreTests : IDisposable
     [Theory]
     [InlineData("../x.png")]
     [InlineData("a/b.png")]
+    [InlineData("a\\b.png")]
     [InlineData("..")]
     [InlineData("")]
-    [InlineData("with space.png")]
-    [InlineData("кириллица.png")]
+    [InlineData("bad\u0001name.png")]
+    [InlineData("CON.png")]
+    [InlineData("nul.jpg")]
     public void ValidateName_Rejects_Invalid(string name)
     {
         Assert.ThrowsAny<ArgumentException>(() => _store.ValidateName(name));
@@ -93,5 +95,14 @@ public sealed class PhysicalFileStoreTests : IDisposable
     {
         Assert.Equal("goblin_01.png", _store.ValidateName("goblin_01.png"));
         Assert.Equal("map-v2.final.jpg", _store.ValidateName("map-v2.final.jpg"));
+    }
+
+    [Fact]
+    public void ValidateName_AcceptsLaptopNames()
+    {
+        // Имена с ноутбука: пробелы и кириллица — обычное дело (M2).
+        Assert.Equal("with space.png", _store.ValidateName("with space.png"));
+        Assert.Equal("Карта подземелья.png", _store.ValidateName("Карта подземелья.png"));
+        Assert.Equal("Гоблин (синий).png", _store.ValidateName("Гоблин (синий).png"));
     }
 }

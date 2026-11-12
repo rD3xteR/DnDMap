@@ -1,17 +1,21 @@
 # Архитектура DnDMap
 
-Обновлено: 2026-11-11 (M1: WPF работает на общем ядре). Код ссылается на файлы в рабочей копии.
+Обновлено: 2026-11-11 (M2: HTTP-сервер и веб-пульт). Код ссылается на файлы в рабочей копии.
 
 ## Общая схема
 
-Сейчас три рабочих проекта: WPF-оболочка, ядро и каркас сервера. UI — MVVM без фреймворков:
+Четыре рабочих проекта: WPF-оболочка, ядро, HTTP-сервер и веб-пульт (статика внутри сервера). UI — MVVM без фреймворков:
 свой `ViewModelBase` и `RelayCommand` остались в WPF-проекте как UI-обвязка, состояние игры — в ядре.
 
 ```
 App.xaml (StartupUri = SettingsWindow)
    └── SettingsViewModel  «Управление»  (SettingsWindow/)
-         ├── владеет единственным экземпляром MapViewModel  (Properties.cs:44)
-         ├── Paths.Default  →  сохранение путей при закрытии окна (Methods.cs:15-21)
+         ├── владеет единственным экземпляром MapViewModel  (Properties.cs)
+         ├── Paths.Default  →  сохранение путей при закрытии окна (Methods.cs)
+         ├── группа «Сервер для планшета» → MapServer (DnDMap.Server)
+         │     ├── MapSession (своя, отдельная от WPF-окна)
+         │     ├── PhysicalFileStore → %LOCALAPPDATA%\DnDMap\session-cache
+         │     └── SPA из EmbeddedResource: браузер мастера
          └── MapViewModel.OpenWindow(path)
                ├── MapSession  (DnDMap.Core.Model) — карта, токены, кадр, диаметр
                ├── MapWindow  (безрамочное окно на весь экран, DataContext = этот MapViewModel)
@@ -20,6 +24,9 @@ App.xaml (StartupUri = SettingsWindow)
                │     └── ZoomPan.cs — зум/панорама через ViewGeometry
                └── ImageSource карты — грузится в память (BitmapCacheOption.OnLoad)
 ```
+
+Браузер и WPF-окно карты **не разделяют сессию** (M2): у сервера свой `MapSession`, у окна карты свой.
+Это зафиксированный долг — сведение в одну сессию отдельной задачей.
 
 ## Точки входа
 
@@ -49,6 +56,12 @@ App.xaml (StartupUri = SettingsWindow)
 4. **Перемещение токена** — mouse/манипуляция в пикселях окна → `ScreenToMap` → `MoveTokenCommand` (px карты).
 5. **Смена размера токенов** — слайдер «Диаметр» → `SettingsViewModel.DiameterToChange` → `MapViewModel.SetDiameter`
    (px эталонного экрана 1920×1080) → `SetDiameterCommand` → `MapToken.Size` в px карты.
+6. **Веб-пульт** — браузер шлёт `POST /api/commands`, сервер применяет команду к своей `MapSession`,
+   `Changed` → SSE-событие `state` с полным `SessionDto` (токены в px карты, `visibleRect`).
+   Файлы: браузер загружает `PUT /api/files/{kind}/{name}` (сырое тело), читает манифест
+   `GET /api/files?kind=…` и досылает недостающее из IndexedDB; картинки — `GET /files/{kind}/{name}`.
+7. **Запуск сервера** — `SettingsViewModel.StartServer`: очистка кэша → `MapServer.Start()` → URL
+   `http://<локальный IPv4>:<port>/`. `OnClosing` → `StopServer` (`Dispose`).
 
 ## Рендеринг и координаты
 
@@ -66,10 +79,11 @@ App.xaml (StartupUri = SettingsWindow)
 | Модуль | Зависит от | Назначение |
 | --- | --- | --- |
 | `src/DnDMap.Core` | только BCL | геометрия кадра, сессия, команды, хранилище, размеры изображений |
+| `src/DnDMap.Server` | `DnDMap.Core`, BCL (`TcpListener`) | HTTP/1.1, REST, SSE, манифест и загрузка файлов, SPA из ресурсов |
 | `DnDMap/Core/` | WPF (`ICommand`, `MarkupExtension`) | `ViewModelBase`, `RelayCommand`, конвертеры, расширения разметки |
 | `DnDMap/Models/` | — | DTO списков: `ImageItem` |
 | `DnDMap/MapWindow/` | `DnDMap.Core`, `Core/` | окно карты + `MapViewModel` (partial: `MainViewModel`, `Properties`, `Tokens`, `ZoomPan`) + `TokenViewModel` |
-| `DnDMap/SettingsWindow/` | `MapWindow.ViewModel`, `DnDMap.Core`, `Models/` | окно «Управление» + `SettingsViewModel` |
+| `DnDMap/SettingsWindow/` | `MapWindow.ViewModel`, `DnDMap.Server`, `DnDMap.Core`, `Models/` | окно «Управление», `SettingsViewModel` (+ запуск сервера) |
 
 Удалены как дубли ядра: `Core/GlobalSettings.cs`, `Core/Enums/EntitySize.cs`, `Core/Parameters/TokenParams.cs`,
 `TokenModel/*`, `Models/EntitySizeItem.cs`.
@@ -89,20 +103,22 @@ App.xaml (StartupUri = SettingsWindow)
 | Проект | TFM | Назначение | Состояние |
 | --- | --- | --- | --- |
 | `src/DnDMap.Core` | net10.0 | геометрия кадра, модель сессии, DTO, хранилище, размеры изображений | готово, покрыто тестами |
-| `src/DnDMap.Server` | net10.0 | HTTP-сервер на BCL (`TcpListener`) | каркас: только `ServerOptions` |
-| `src/DnDMap.Core.Tests` | net10.0 | xUnit-тесты ядра | 75 тестов, все зелёные |
+| `src/DnDMap.Server` | net10.0 | HTTP-сервер на BCL (`TcpListener`), SSE, SPA в ресурсах | готово (M2), покрыто тестами |
+| `src/DnDMap.Core.Tests` | net10.0 | xUnit-тесты ядра | 78 тестов, все зелёные |
+| `src/DnDMap.Server.Tests` | net10.0 | xUnit-тесты API/SSE/загрузки на живом сервере | 15 тестов, все зелёные |
 
-Поток данных после M1:
+Поток данных после M2:
 
 ```
-MapSession (Core)  ←  Command (WPF-мост сейчас, POST /api/commands в M2)
+MapSession (Core)  ←  Command (WPF-мост и POST /api/commands)
       │ Changed(SessionChange)
       ├── WPF-мост: Snapshot() → экранные координаты (MapLeft/MapTop, TokenViewModel)
-      └── SSE-рассылка (M2): все браузеры получают visibleRect + токены
+      └── SSE-рассылка: все браузеры получают полный SessionDto (visibleRect + токены)
 ```
 
 Ключевые типы: `MapSession` (`Model/MapSession.cs`), `ViewGeometry` (`Geometry/ViewGeometry.cs`),
-`SessionSnapshot`, `Command`/`SessionDto` (`Protocol/`). Подробности — [topics/core-and-web.md](topics/core-and-web.md).
+`SessionSnapshot`, `Command`/`SessionDto` (`Protocol/`), `MapServer` (`src/DnDMap.Server/MapServer.cs`).
+Подробности — [topics/core-and-web.md](topics/core-and-web.md).
 
 ## Файлы карт и токенов (уточнено 2026-11-10)
 
@@ -120,7 +136,7 @@ MapSession (Core)  ←  Command (WPF-мост сейчас, POST /api/commands �
 
 - На планшете **нет библиотеки и UI управления файлами**: только кэш текущей сессии.
 - Перед `setMap`/`addToken` сервер проверяет наличие файла в кэше — иначе в состоянии появилась бы битая ссылка.
-- `MapSession` о файловой системе не знает; проверка — на уровне сервера (M2).
+- `MapSession` о файловой системе не знает; проверка — на уровне сервера (M2, `MapServer.HandleCommandAsync`).
 - WPF по-прежнему работает с обычными папками пользователя (`Paths.Default.MapsPath/TokensPath`).
-- Имена файлов с ноутбука (пробелы, кириллица) текущим `ValidateName` не проходят — правило меняется в M2
-  (см. [decisions.md](decisions.md) и [troubleshooting.md](troubleshooting.md)).
+- Имена файлов с ноутбука (пробелы, кириллица) проходят: `ValidateName` ослаблен в M2
+  (запрещены только разделители, управляющие символы, `CON`/`NUL`…, завершающая точка/пробел).

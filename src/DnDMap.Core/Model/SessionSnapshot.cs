@@ -20,5 +20,5 @@ public sealed record SessionSnapshot(
 
     public double FitScale => Context.FitScale;
 
-    public RectD VisibleRect => ViewGeometry.VisibleRect(View, FitScale, ViewportWidth, ViewportHeight);
+    public RectD VisibleRect => ViewGeometry.VisibleRect(View, FitScale * View.Zoom, ViewportWidth, ViewportHeight);
 }

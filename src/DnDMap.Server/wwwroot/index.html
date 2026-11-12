@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>DnDMap — пульт мастера</title>
+    <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+    <header id="bar">
+        <span class="brand">DnDMap</span>
+        <span id="status" class="status">подключение…</span>
+        <span class="spacer"></span>
+
+        <button id="filesToggle" class="btn" type="button">Файлы</button>
+
+        <span class="divider"></span>
+
+        <select id="mapSelect" title="Карта"></select>
+        <button id="openMap" class="btn" type="button">Открыть карту</button>
+
+        <span class="divider"></span>
+
+        <select id="tokenSelect" title="Токен"></select>
+        <select id="sizeSelect" title="Размер существа">
+            <option value="Normal">обычный</option>
+            <option value="Big">большой</option>
+            <option value="Huge">огромный</option>
+        </select>
+        <button id="addToken" class="btn" type="button">+ токен</button>
+
+        <span class="divider"></span>
+
+        <div class="zoom" title="Зум">
+            <span>Зум</span>
+            <button id="zoomOut" class="btn icon" type="button" aria-label="Уменьшить">−</button>
+            <input id="zoom" type="range" min="1" max="3" step="0.01" value="1">
+            <button id="zoomIn" class="btn icon" type="button" aria-label="Увеличить">+</button>
+            <output id="zoomValue">1.00×</output>
+        </div>
+
+        <div class="zoom" title="Базовый размер токенов">
+            <span>Токены</span>
+            <input id="diameter" type="range" min="20" max="200" step="1" value="100">
+            <output id="diameterValue">100</output>
+        </div>
+
+        <button id="reset" class="btn" type="button">Сброс</button>
+    </header>
+
+    <aside id="files" class="panel hidden">
+        <section class="drop" data-kind="map">
+            <b>Карты</b>
+            <span>перетащите PNG/JPEG сюда или нажмите</span>
+            <input id="mapFiles" type="file" multiple accept=".png,.jpg,.jpeg" hidden>
+            <small id="mapCount" class="count"></small>
+        </section>
+
+        <section class="drop" data-kind="token">
+            <b>Токены</b>
+            <span>перетащите PNG/JPEG сюда или нажмите</span>
+            <input id="tokenFiles" type="file" multiple accept=".png,.jpg,.jpeg" hidden>
+            <small id="tokenCount" class="count"></small>
+        </section>
+
+        <p class="hint">Выбранные файлы браузер запоминает и при следующем подключении
+            досылает недостающие на планшет.</p>
+        <p id="note" class="note"></p>
+    </aside>
+
+    <main id="stage">
+        <img id="mapImage" alt="">
+        <div id="tokens"></div>
+        <div id="empty" class="empty">Загрузите карту и нажмите «Открыть карту»</div>
+    </main>
+
+    <script src="/app.js"></script>
+</body>
+</html>

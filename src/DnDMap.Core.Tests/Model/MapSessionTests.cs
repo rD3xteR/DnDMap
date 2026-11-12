@@ -268,4 +268,59 @@ public class MapSessionTests
         Assert.False(session.Apply(new SetMapCommand("", 1600, 900)));
         Assert.Null(session.Map);
     }
+
+    [Fact]
+    public void VisibleRect_ShrinksWithZoom()
+    {
+        var session = CreateSessionWithMap();
+        var atFit = session.VisibleRect;
+
+        Assert.True(session.Apply(new SetViewCommand(800, 450, 2)));
+
+        var zoomed = session.VisibleRect;
+
+        // Видимая область — вьюпорт / (fit × zoom): при зуме 2 она вдвое меньше.
+        Assert.Equal(atFit.Width / 2, zoomed.Width, 6);
+        Assert.Equal(atFit.Height / 2, zoomed.Height, 6);
+        Assert.Equal(800, zoomed.X + (zoomed.Width / 2), 6);
+        Assert.Equal(450, zoomed.Y + (zoomed.Height / 2), 6);
+    }
+
+    [Fact]
+    public void Snapshot_VisibleRect_AlsoHonoursZoom()
+    {
+        var session = CreateSessionWithMap();
+        session.Apply(new SetViewCommand(800, 450, 2.5));
+
+        var snapshot = session.Snapshot();
+
+        Assert.Equal(session.VisibleRect.Width, snapshot.VisibleRect.Width, 6);
+        Assert.Equal(session.VisibleRect.Height, snapshot.VisibleRect.Height, 6);
+    }
+
+    [Fact]
+    public void Apply_MoveToken_ClampsCenterToMapBounds()
+    {
+        var session = CreateSessionWithMap();
+        session.Apply(new AddTokenCommand("goblin.png"));
+        var id = session.Tokens[0].Id;
+
+        Assert.True(session.Apply(new MoveTokenCommand(id, 5000, -300)));
+
+        var token = Assert.Single(session.Tokens);
+        Assert.Equal(MapWidth, token.X, 6);
+        Assert.Equal(0, token.Y, 6);
+    }
+
+    [Fact]
+    public void Apply_AddTokenWithExplicitPosition_ClampsToMapBounds()
+    {
+        var session = CreateSessionWithMap();
+
+        Assert.True(session.Apply(new AddTokenCommand("goblin.png", EntitySize.Normal, -50, 4000)));
+
+        var token = Assert.Single(session.Tokens);
+        Assert.Equal(0, token.X, 6);
+        Assert.Equal(MapHeight, token.Y, 6);
+    }
 }

@@ -14,4 +14,11 @@
     <ProjectReference Include="..\DnDMap.Core\DnDMap.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Статика SPA внутри сборки: на планшете нет интернета и внешних CDN. -->
+    <EmbeddedResource Include="wwwroot\index.html" LogicalName="DnDMap.Server.wwwroot.index.html" />
+    <EmbeddedResource Include="wwwroot\app.css" LogicalName="DnDMap.Server.wwwroot.app.css" />
+    <EmbeddedResource Include="wwwroot\app.js" LogicalName="DnDMap.Server.wwwroot.app.js" />
+  </ItemGroup>
+
 </Project>

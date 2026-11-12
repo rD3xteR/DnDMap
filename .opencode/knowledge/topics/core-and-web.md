@@ -1,6 +1,6 @@
 # Тема: ядро и веб-хост
 
-Обновлено: 2026-11-11. Статус: M0 и M1 завершены (ядро + тесты + WPF на ядре), M2–M4 — план.
+Обновлено: 2026-11-12. Статус: M0, M1 и M2 завершены (ядро + WPF + HTTP-сервер и веб-пульт), M3–M4 — план.
 
 ## Зачем это
 
@@ -25,8 +25,9 @@
 | Проект | TFM | Роль |
 | --- | --- | --- |
 | `src/DnDMap.Core` | `net10.0` | геометрия, модель сессии, хранилище, протокол — без UI |
-| `src/DnDMap.Server` | `net10.0` | HTTP-сервер: REST + SSE + статика (M2) |
+| `src/DnDMap.Server` | `net10.0` | HTTP-сервер: REST + SSE + SPA в ресурсах (M2) |
 | `src/DnDMap.Core.Tests` | `net10.0` | xUnit-тесты ядра + legacy-parity |
+| `src/DnDMap.Server.Tests` | `net10.0` | xUnit-тесты API/SSE/загрузки на живом сервере |
 | `DnDMap` (WPF) | `net10.0-windows7.0` | UI поверх `DnDMap.Core` (M1): мост «сессия ↔ экран» |
 | Android (M3) | `net10.0-android` | экран стола + хостинг сервера |
 
@@ -42,7 +43,7 @@ Namespace'ы ядра — `DnDMap.Core.{Geometry,Model,Storage,Imaging,Protocol}
 | `ViewState(Center, Zoom)` | `Geometry`, в `MapSession` | центр вида в px карты + зум относительно fit |
 | `ViewportWidth/Height` | `MapSession.SetViewport` | живой размер экрана/окна/WebView |
 | `FitScale` | `ViewGeometry.FitScale` | `min(vw/mw, vh/mh)` — вписывание карты |
-| `VisibleRect` | `ViewGeometry.VisibleRect` | что видно, в px карты |
+| `VisibleRect` | `ViewGeometry.VisibleRect` | что видно, в px карты: `viewport / (fit × zoom)` |
 
 Клиенты (WPF, браузер) **не дублируют** fit/clamp/зум: хост присылает `visibleRect`, клиент только
 растягивает его на свой canvas. Это гарантирует одинаковый кадр на столе и в пульте.
@@ -79,8 +80,8 @@ JSON-дискриминатор `type` (`JsonPolymorphic`), обязательн
 | `type` | Поля | Что делает |
 | --- | --- | --- |
 | `setMap` | `name`, `width`, `height` | открыть карту, сбросить кадр, пересчитать диаметр, прижать токены в границы |
-| `addToken` | `file`, `entitySize?`, `x?`, `y?` | добавить токен; без координат — **в центр карты** (issue #4) |
-| `moveToken` | `tokenId`, `x`, `y` | переместить (px карты) |
+| `addToken` | `file`, `entitySize?`, `x?`, `y?` | добавить токен; без координат — **в центр карты** (issue #4), явные координаты клампятся в границы карты |
+| `moveToken` | `tokenId`, `x`, `y` | переместить (px карты); центр клампится в `[0,width]×[0,height]` |
 | `removeToken` | `tokenId` | удалить |
 | `setDiameter` | `referencePx` | базовый диаметр в px эталона, клампится в 20–200 |
 | `setView` | `centerX`, `centerY`, `zoom` | задать кадр, зум клампится в 1..3 |
@@ -93,7 +94,9 @@ JSON-дискриминатор `type` (`JsonPolymorphic`), обязательн
 
 `IFileStore` — `List/Exists/OpenRead/Write/Delete/ValidateName`.
 `PhysicalFileStore` — папка `{root}/maps` и `{root}/tokens`:
-имена `^[A-Za-z0-9._-]+$`, ≤ 120 символов, нормализация пути и проверка «внутри папки вида» (anti-traversal).
+имена ≤ 120 символов; разрешены пробелы и кириллица; запрещены разделители пути, управляющие символы,
+`CON`/`NUL`/`COM1`…, завершающая точка/пробел; нормализация пути и проверка «внутри папки вида» (anti-traversal).
+`Write` атомарный: временный `*.upload` → `File.Move(overwrite: true)` (оборванная загрузка не оставляет битую карту).
 
 `ImageSizeReader` читает ширину/высоту PNG (IHDR) и JPEG (SOF) из первых 64 КБ, без `System.Drawing`.
 
@@ -111,14 +114,55 @@ JSON-дискриминатор `type` (`JsonPolymorphic`), обязательн
 `MapSession` о файловой системе не знает: проверка «файл есть в кэше» — на уровне сервера (M2),
 иначе в состоянии появилась бы ссылка на отсутствующий файл.
 
-Ограничения, которые надо решить в M2:
+Сделано в M2:
 
-- `ValidateName` не пропускает пробелы и кириллицу (обычные имена с ноутбука) — ослабить правило
-  или санитизировать имя, храня исходное отдельно.
-- Коллизии: `map.png` из разных папок — при разном хэше переименовывать (`map (2).png`), не перезаписывать.
-- Лимиты кэша: максимальный размер файла и общий объём (защита от переполнения `FilesDir`).
+- `ValidateName` ослаблен под имена с ноутбука (пробелы, кириллица), см. «Хранилище».
+- Лимит одного файла — 256 МБ (`ServerOptions.MaxUploadBytes`), общий объём кэша не ограничен:
+  кэш живёт одну сессию и очищается при старте/выходе.
+- Коллизии имён (`map.png` из разных папок) **не переименовываются**: загрузка перезаписывает файл.
+  Браузер сверяет имя+размер, поэтому при одинаковом имени и другом содержимом возможна путаница —
+  известный долг, см. [troubleshooting.md](../troubleshooting.md).
 
-## Что дальше (M1–M4)
+## Сервер M2 (`src/DnDMap.Server`)
+
+`MapServer` (`MapServer.cs`) — HTTP/1.1 на `TcpListener`, одно соединение на запрос (`Connection: close`),
+кроме SSE. `Port = 0` выбирает свободный порт (используется тестами). `Start()`, `StopAsync()`, `Dispose()`,
+свойство `Log` для диагностики. Один `MapSession` на сервер, подписка на `Changed` → рассылка SSE.
+
+| Маршрут | Ответ / поведение |
+| --- | --- |
+| `GET /`, `/app.css`, `/app.js` | SPA из `EmbeddedResource` (без файлов на диске и CDN) |
+| `GET /api/session` | полный `SessionDto` |
+| `POST /api/commands` | `Command` JSON → `{accepted,revision}`; 409, если команда отклонена |
+| `GET /api/events` | SSE, событие `state` с полным `SessionDto`; ping-комментарий каждые 15 с |
+| `GET /api/files?kind=map\|token` | `{files:[{name,size,hash}]}`, SHA-256 из `FileHashCache` |
+| `PUT /api/files/{kind}/{name}` | сырое тело (без multipart), 413 при превышении лимита, 415 для не-PNG/JPEG |
+| `DELETE /api/files/{kind}/{name}` | 204 / 404, инвалидирует хэш |
+| `GET /files/{kind}/{name}` | байты для `<img>` с правильным `Content-Type` |
+
+Особенности:
+
+- `setMap` игнорирует присланные клиентом размеры: сервер читает их из файла (`ImageSizeReader`).
+- `setMap`/`addToken` требуют, чтобы файл уже был в кэше (409) — клиент сначала загружает, потом командует.
+- Загрузка проверяет сигнатуру после записи: битый файл удаляется, ответ 415.
+- SSE-очередь на клиента ограничена (16, `DropOldest`): медленный браузер не тормозит остальных.
+- `ServerDtos.cs` — DTO сети: манифест, результат загрузки, результат команды, ошибка.
+
+SPA (`wwwroot/app.js`):
+
+- подписка `EventSource('/api/events')`, начальный `GET /api/session`;
+- рендер как в WPF — экранные координаты из `visibleRect` (в него входит зум: `fit × zoom`), без `RenderTransform`;
+- драг токена и панорама — pointer events с оптимистичным обновлением и throttle (30/40 мс);
+  оба ограничиваются локально (`ClampAxis` в `app.js`) и повторно в ядре;
+- зум — колесо, слайдер, кнопки «−/+»; `zoom-at-point` считается на клиенте из `visibleRect` + `view.zoom`;
+- слайдер «Токены» 20–200 ref-px → `setDiameter` (throttle 60 мс), подпись синхронизируется из `baseDiameter`;
+- файлы: две drop-зоны + `<input type=file multiple>`, IndexedDB хранит `{kind,name,size,blob}`,
+  при старте сравнивает с манифестом и досылает недостающее (сейчас по имени+размеру).
+
+Исправления 2026-11-12: `visibleRect` без множителя `zoom` (из-за него зум «не работал» в браузере),
+кламп панорамы/драга на клиенте + кламп токена в ядре, слайдер размера токенов. Подробности — [decisions.md](../decisions.md).
+
+
 
 **M1 — WPF на ядре (завершён 2026-11-11).** `MapViewModel` стал мостом над `MapSession`: состояние, команды
 и геометрия — в ядре; WPF только переводит кадр в экранные координаты и обратно. Рендер переписан без
@@ -126,13 +170,13 @@ JSON-дискриминатор `type` (`JsonPolymorphic`), обязательн
 удалены, `ViewModelBase`/`RelayCommand` оставлены как UI-обвязка. Подробности — [decisions.md](../decisions.md),
 рендер и ввод — [ui-and-interaction.md](ui-and-interaction.md).
 
-**M2 — сервер.** `TcpListener`, маршруты (черновик):
-`GET /` (SPA), `GET /api/session`, `POST /api/commands`, `GET /api/events` (SSE),
-`GET /api/files?kind=map|token` (манифест кэша: имя, размер, хэш),
-`PUT /api/files/{kind}/{name}` (потоковая загрузка, сырое тело без multipart),
-`GET /files/{kind}/{name}` (отдача байтов для `<img>`), `DELETE /api/files/{kind}/{name}` (необязательно).
-Статика — из ресурсов сборки, без CDN. Связка: `Changed` → рассылка `SessionDto`.
-Перед `setMap`/`addToken` сервер проверяет, что файл есть в кэше.
+**M2 — сервер (завершён 2026-11-11).** `TcpListener`, маршруты из таблицы «Сервер M2», SSE с полным
+`SessionDto`, статика из ресурсов, кэш `%LOCALAPPDATA%\DnDMap\session-cache` (очистка при старте и выходе),
+запуск из окна «Управление». Проверено 15 тестами API + живым прогоном SPA (ядро — 82 теста).
+Подробности — [decisions.md](../decisions.md).
+
+Не сделано (долг M2): серверная сессия не связана с сессией WPF-окна карты; аутентификации нет
+(доверенная LAN); IndexedDB сверяет имя+размер, а не хэш.
 
 **M3 — Android.** `net10.0-android`, своя Activity: полноэкранный `View`/`WebView`; сервер стартует из `MainActivity`,
 кэш — `FilesDir/session-cache`, очищается при старте (и по выходу). Никакого UI управления файлами на планшете.

@@ -83,7 +83,8 @@ public sealed class MapSession
         get
         {
             lock (_gate)
-                return ViewGeometry.VisibleRect(_view, FitScaleLocked(), _viewportWidth, _viewportHeight);
+                return ViewGeometry.VisibleRect(
+                    _view, FitScaleLocked() * _view.Zoom, _viewportWidth, _viewportHeight);
         }
     }
 
@@ -184,12 +185,16 @@ public sealed class MapSession
 
             case MoveTokenCommand moveToken:
             {
+                if (_map is null)
+                    return false;
+
                 var token = FindTokenLocked(moveToken.TokenId);
                 if (token is null)
                     return false;
 
-                token.X = moveToken.X;
-                token.Y = moveToken.Y;
+                // Центр токена не выходит за карту: клиент не может утащить его в пустоту.
+                token.X = Math.Clamp(moveToken.X, 0, _map.Width);
+                token.Y = Math.Clamp(moveToken.Y, 0, _map.Height);
                 return true;
             }
 
@@ -244,8 +249,8 @@ public sealed class MapSession
             return false;
 
         // Без явных координат токен появляется в центре карты, а не в (0,0) — issue #4.
-        var x = command.X ?? _map.Width / 2.0;
-        var y = command.Y ?? _map.Height / 2.0;
+        var x = Math.Clamp(command.X ?? _map.Width / 2.0, 0, _map.Width);
+        var y = Math.Clamp(command.Y ?? _map.Height / 2.0, 0, _map.Height);
 
         _tokens.Add(new MapToken(
             Guid.NewGuid().ToString("N"),

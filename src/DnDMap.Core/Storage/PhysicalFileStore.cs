@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace DnDMap.Core.Storage;
 
 /// <summary>Хранилище на обычной папке: {root}/maps и {root}/tokens.</summary>
@@ -7,7 +5,16 @@ public sealed class PhysicalFileStore : IFileStore
 {
     public static readonly string[] SupportedExtensions = [".png", ".jpg", ".jpeg"];
 
-    private static readonly Regex NamePattern = new("^[A-Za-z0-9._-]+$", RegexOptions.Compiled);
+    /// <summary>Запрещённые символы: разделители путей, управляющие и недопустимые в Windows.</summary>
+    private static readonly char[] InvalidNameChars =
+        ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
+
+    private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+    };
 
     private readonly string _root;
 
@@ -44,8 +51,22 @@ public sealed class PhysicalFileStore : IFileStore
     {
         ArgumentNullException.ThrowIfNull(content);
 
-        using var file = new FileStream(PathForFile(kind, name), FileMode.Create, FileAccess.Write, FileShare.None);
-        content.CopyTo(file);
+        var path = PathForFile(kind, name);
+        var temporary = path + ".upload";
+
+        try
+        {
+            using (var file = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
+                content.CopyTo(file);
+
+            // Пишем через временный файл: оборванная загрузка не оставит битую карту.
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+                File.Delete(temporary);
+        }
     }
 
     public bool Delete(FileKind kind, string name)
@@ -68,8 +89,16 @@ public sealed class PhysicalFileStore : IFileStore
         if (name is "." or "..")
             throw new ArgumentException("Недопустимое имя файла.", nameof(name));
 
-        if (!NamePattern.IsMatch(name))
+        if (name.IndexOfAny(InvalidNameChars) >= 0 || name.Any(char.IsControl))
             throw new ArgumentException("Имя файла содержит недопустимые символы.", nameof(name));
+
+        // Windows молча обрезает точку/пробел в конце — такое имя сохранится под другим.
+        if (name.EndsWith(' ') || name.EndsWith('.'))
+            throw new ArgumentException("Имя файла не может заканчиваться точкой или пробелом.", nameof(name));
+
+        var stem = Path.GetFileNameWithoutExtension(name);
+        if (ReservedNames.Contains(stem))
+            throw new ArgumentException("Зарезервированное имя файла.", nameof(name));
 
         return name;
     }

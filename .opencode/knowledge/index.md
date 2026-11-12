@@ -3,7 +3,7 @@
 Проект: приложение для показа карт Dungeons & Dragons на экране с токенами существ и персонажей.
 Сейчас это WPF-десктоп; идёт переезд на схему «ядро + веб-сервер + Android-хост» (self-host в локальной сети).
 Репозиторий: https://github.com/rD3xteR/DnDMap
-Последнее обновление: 2026-11-11
+Последнее обновление: 2026-11-12
 
 | Файл | Содержание |
 | --- | --- |
@@ -14,23 +14,28 @@
 | [troubleshooting.md](troubleshooting.md) | Известные проблемы, предупреждения сборки, баги, подозрения |
 | [topics/ui-and-interaction.md](topics/ui-and-interaction.md) | Окна, ввод, рендеринг карты и токенов, координаты |
 | [topics/build-and-release.md](topics/build-and-release.md) | Сборка, publish, инсталлятор Inno Setup, CI/CD |
-| [topics/core-and-web.md](topics/core-and-web.md) | Ядро `DnDMap.Core`, система координат, план API/SSE для веб-клиента |
+| [topics/core-and-web.md](topics/core-and-web.md) | Ядро `DnDMap.Core`, система координат, HTTP-сервер, API/SSE, SPA |
 
 ## Быстрый старт
 
 - Собрать всё: `dotnet build DnDMap.sln -c Debug`.
 - Тесты ядра: `dotnet test src/DnDMap.Core.Tests/DnDMap.Core.Tests.csproj`.
-- Запустить WPF-приложение: `dotnet run --project DnDMap/DnDMap.csproj` — стартовое окно «Управление».
+- Тесты сервера: `dotnet test src/DnDMap.Server.Tests/DnDMap.Server.Tests.csproj`.
+- Запустить WPF-приложение: `dotnet run --project DnDMap/DnDMap.csproj` — стартовое окно «Управление»;
+  там же группа «Сервер для планшета» → «Запустить сервер» и адрес для браузера.
 - Каталог сборки **WPF-проекта — вне репозитория**: `<три уровня выше DnDMap/DnDMap>\DndMap\Debug`
   (см. `BaseOutputPath` в `DnDMap/DnDMap.csproj`). Новые проекты `src/*` собираются в свои `bin/obj` (в репозитории, git их игнорирует).
 
 ## Что сейчас в рабочей копии
 
-Проверено 2026-11-11:
+Проверено 2026-11-12:
 
 - **Закоммичено** `a286db0` `feat: add shared core, session model and core tests (#15)` — ядро, каркас сервера, 75 тестов.
-- **Не закоммичено** (M1, по просьбе пользователя): WPF переведён на `DnDMap.Core` —
-  `MapViewModel` стал мостом над `MapSession`, рендер в экранных координатах, удалены дубли
-  (`GlobalSettings`, `EntitySize`, `TokenParams`, `Token`, `EntitySizeItem`), добавлен `TokenViewModel`.
+- **Закоммичено** `863e9b3` `feat: run WPF app on shared core, drop touch input (#15)` — M1: WPF на ядре,
+  сенсорный ввод удалён.
+- **Готово к коммиту** (M2 + исправления веб-пульта 2026-11-12): HTTP-сервер (`MapServer`, REST/SSE/загрузка),
+  SPA `wwwroot/` в ресурсах, `DnDMap.Server.Tests` (15 тестов), ослабленный `ValidateName`,
+  группа «Сервер для планшета» в окне «Управление». Исправлены зум (`visibleRect` теперь `fit × zoom`),
+  границы панорамы/токенов и добавлен слайдер размера токенов. Тесты: ядро 82, сервер 15; живой прогон SPA — ок.
 - Ранее не закоммичено: персистентность путей (`Paths.settings`, `Paths.Designer.cs`, `App.config`).
 - Подробности — в [decisions.md](decisions.md), [architecture.md](architecture.md) и [troubleshooting.md](troubleshooting.md).

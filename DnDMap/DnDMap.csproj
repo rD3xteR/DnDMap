@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\src\DnDMap.Core\DnDMap.Core.csproj" />
+    <ProjectReference Include="..\src\DnDMap.Server\DnDMap.Server.csproj" />
   </ItemGroup>
 
   <ItemGroup>

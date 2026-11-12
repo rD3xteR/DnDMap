@@ -38,7 +38,7 @@ dotnet run --project DnDMap/DnDMap.csproj
 - SDK: `global.json` требует `8.0.0` c `rollForward: latestMajor` → на машине реально используется последний установленный (проверено: 10.0.302).
 - Целевая платформа `net10.0-windows7.0`, `UseWPF=true`, `UseWindowsForms=true` (нужен `FolderBrowserDialog`).
 - **Каталог вывода — вне репозитория**: `BaseOutputPath = ..\..\..\DndMap` относительно `DnDMap/DnDMap/`, то есть `C:\Users\User\source\DndMap\<Configuration>\`. Искать бинарники в `bin/` не нужно — их там нет; `AppendTargetFrameworkToOutputPath/AppendRuntimeIdentifierToOutputPath = false`.
-- Тестовый проект — `src/DnDMap.Core.Tests` (xUnit, 75 тестов). Анализаторов/линтеров нет; после M1 сборка идёт с **0 предупреждений**.
+- Тестовые проекты — `src/DnDMap.Core.Tests` (xUnit, 78 тестов) и `src/DnDMap.Server.Tests` (15 тестов на живом `MapServer`). Анализаторов/линтеров нет; сборка идёт с **0 предупреждений**.
 
 ### Инсталлятор
 
@@ -67,9 +67,14 @@ dotnet run --project DnDMap/DnDMap.csproj
 dotnet build DnDMap.sln -c Debug
 dotnet build DnDMap.sln -c Release
 dotnet test src/DnDMap.Core.Tests/DnDMap.Core.Tests.csproj
+dotnet test src/DnDMap.Server.Tests/DnDMap.Server.Tests.csproj
 ```
 
-- `src/DnDMap.Core`, `src/DnDMap.Server`, `src/DnDMap.Core.Tests` — `net10.0`, `LangVersion=preview`, `Nullable=enable`.
+- `src/DnDMap.Core`, `src/DnDMap.Server`, `src/DnDMap.Core.Tests`, `src/DnDMap.Server.Tests` — `net10.0`, `LangVersion=preview`, `Nullable=enable`.
+- Статика SPA лежит в `src/DnDMap.Server/wwwroot/` и подключается как `EmbeddedResource` с явным `LogicalName`
+  (`DnDMap.Server.wwwroot.*`) — файлы на диск рядом с exe не копируются, на Android это важно.
+- `DnDMap.Server.Tests` поднимает настоящий сервер на `127.0.0.1:0` и временной папке (`ServerFixture`),
+  ходит через `HttpClient`, SSE читает построчно. Порт 0 и очистка папки — обязательны, чтобы тесты не конфликтовали.
 - Вывод — в их собственные `bin/obj` **внутри** репозитория (в отличие от WPF-проекта с `BaseOutputPath`); git их игнорирует.
 - Корневой `Directory.Build.props` **не добавлять**: он применится и к существующему WPF-проекту и может изменить его сборку.
 - Прод-код — только BCL. NuGet-пакеты допустимы только в тестовом проекте

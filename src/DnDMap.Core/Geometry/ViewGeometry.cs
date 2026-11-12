@@ -120,7 +120,8 @@ public static class ViewGeometry
 
     /// <summary>
     /// Видимая область карты в пикселях карты — это то, что хост публикует клиентам,
-    /// чтобы они рисовали одинаковый кадр.
+    /// чтобы они рисовали одинаковый кадр. <paramref name="scale"/> — полный масштаб
+    /// (fit × zoom), иначе зум не доедет до клиента.
     /// </summary>
     public static RectD VisibleRect(ViewState view, double scale, double viewportWidth, double viewportHeight)
     {
