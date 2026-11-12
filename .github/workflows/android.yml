@@ -47,17 +47,30 @@ jobs:
       # поэтому APK сразу устанавливается на планшет. Для публикации в магазин
       # позже понадобится собственный keystore и Release + AndroidKeyStore.
       - name: Build APK
-        run: dotnet build src/DnDMap.Android/DnDMap.Android.csproj -c Debug
+        run: dotnet build src/DnDMap.Android/DnDMap.Android.csproj -c Debug -p:EmbedAssembliesIntoApk=true
 
       # Страховка от Fast Deployment: если managed-сборки не попали в APK,
       # установленное вручную приложение падает с "No assemblies found ... .__override__".
+      # Внимание: в .NET 9+ сборки лежат не в assemblies/, а в lib/<abi>/libassembly-store.so
+      # (в .NET 8 было lib/<abi>/libassemblies.<abi>.blob.so), поэтому проверяем оба варианта.
       - name: Verify APK is self-contained
         run: |
           set -euo pipefail
-          APK="$(ls src/DnDMap.Android/bin/Debug/net10.0-android/*-Signed.apk)"
-          echo "APK: $APK ($(du -h "$APK" | cut -f1))"
-          unzip -l "$APK" | head -n 15
-          unzip -l "$APK" | grep -q "assemblies/" || {
+          OUT=src/DnDMap.Android/bin/Debug/net10.0-android
+          echo "--- contents of $OUT ---"
+          ls -la "$OUT"
+          APK="$(ls "$OUT"/*-Signed.apk 2>/dev/null | head -n 1 || true)"
+          if [ -z "$APK" ]; then
+            echo "::error::Signed APK not found in $OUT"; exit 1
+          fi
+          echo "--- APK: $APK ($(du -h "$APK" | cut -f1)) ---"
+          LIST="$RUNNER_TEMP/apk-entries.txt"
+          unzip -l "$APK" > "$LIST"
+          echo "entries: $(wc -l < "$LIST")"
+          head -n 30 "$LIST"
+          echo "--- assembly entries ---"
+          grep -E "assemblies|assembly-store" "$LIST" || true
+          grep -Eq "assemblies/|lib/[^/]*/libassembly-store\.so|lib/[^/]*/libassemblies[^/]*\.so|assemblies\.blob" "$LIST" || {
             echo "::error::APK does not embed managed assemblies (fast deployment)"; exit 1; }
 
       - name: Upload APK

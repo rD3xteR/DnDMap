@@ -233,8 +233,11 @@ F DEBUG   : Abort message: 'No assemblies found in
 остаются на машине сборки и доливаются по adb только при `dotnet build -t:Run`. В APK их нет,
 поэтому ручная установка ломается (Release этим не страдает).
 Решение: `<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>` в `src/DnDMap.Android/DnDMap.Android.csproj`;
-workflow дополнительно проверяет, что в APK есть `assemblies/`.
-Если снова такой вылет — смотреть `assemblies/` в APK, а не искать баг в `MainActivity`.
+workflow дополнительно проверяет, что managed-сборки вшиты в APK.
+Важно: с .NET 9+ сборки лежат в `lib/<abi>/libassembly-store.so` (в .NET 8 —
+`lib/<abi>/libassemblies.<abi>.blob.so`), а не в `assemblies/`. Проверка только на `assemblies/`
+даёт ложное падение; смотреть надо `unzip -l "$APK" | grep -E "assemblies|assembly-store"`.
+Если снова такой вылет — проверять наличие assembly store в APK, а не искать баг в `MainActivity`.
 
 ### ⚠️ BlueStacks: `adb shell` рвётся с `error: closed`
 Встроенный `C:\Program Files\BlueStacks_nxt\HD-Adb.exe` — очень старый (1.0.36). Симптомы:
