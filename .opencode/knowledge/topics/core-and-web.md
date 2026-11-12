@@ -1,6 +1,6 @@
 # Тема: ядро и веб-хост
 
-Обновлено: 2026-11-12. Статус: M0, M1 и M2 завершены (ядро + WPF + HTTP-сервер и веб-пульт), M3–M4 — план.
+Обновлено: 2026-11-12. Статус: M0–M3 завершены (ядро, WPF, HTTP-сервер и веб-пульт, Android-хост); M4 — workflow APK готов, сборка ждёт Android-тулчейн/CI.
 
 ## Зачем это
 
@@ -134,6 +134,7 @@ JSON-дискриминатор `type` (`JsonPolymorphic`), обязательн
 | `GET /`, `/app.css`, `/app.js` | SPA из `EmbeddedResource` (без файлов на диске и CDN) |
 | `GET /api/session` | полный `SessionDto` |
 | `POST /api/commands` | `Command` JSON → `{accepted,revision}`; 409, если команда отклонена |
+| `POST /api/viewport` | `{width,height}` → `MapSession.SetViewport`; обновляет fit и `visibleRect` |
 | `GET /api/events` | SSE, событие `state` с полным `SessionDto`; ping-комментарий каждые 15 с |
 | `GET /api/files?kind=map\|token` | `{files:[{name,size,hash}]}`, SHA-256 из `FileHashCache` |
 | `PUT /api/files/{kind}/{name}` | сырое тело (без multipart), 413 при превышении лимита, 415 для не-PNG/JPEG |
@@ -157,7 +158,9 @@ SPA (`wwwroot/app.js`):
 - зум — колесо, слайдер, кнопки «−/+»; `zoom-at-point` считается на клиенте из `visibleRect` + `view.zoom`;
 - слайдер «Токены» 20–200 ref-px → `setDiameter` (throttle 60 мс), подпись синхронизируется из `baseDiameter`;
 - файлы: две drop-зоны + `<input type=file multiple>`, IndexedDB хранит `{kind,name,size,blob}`,
-  при старте сравнивает с манифестом и досылает недостающее (сейчас по имени+размеру).
+  при старте сравнивает с манифестом и досылает недостающее (сейчас по имени+размеру);
+- `?display=1` — экран стола на планшете: шапка и панель скрыты, ввод отключён, сцена сама
+  сообщает размер через `POST /api/viewport` (при старте, `resize`, `orientationchange` и `ResizeObserver`).
 
 Исправления 2026-11-12: `visibleRect` без множителя `zoom` (из-за него зум «не работал» в браузере),
 кламп панорамы/драга на клиенте + кламп токена в ядре, слайдер размера токенов. Подробности — [decisions.md](../decisions.md).
@@ -178,19 +181,29 @@ SPA (`wwwroot/app.js`):
 Не сделано (долг M2): серверная сессия не связана с сессией WPF-окна карты; аутентификации нет
 (доверенная LAN); IndexedDB сверяет имя+размер, а не хэш.
 
-**M3 — Android.** `net10.0-android`, своя Activity: полноэкранный `View`/`WebView`; сервер стартует из `MainActivity`,
-кэш — `FilesDir/session-cache`, очищается при старте (и по выходу). Никакого UI управления файлами на планшете.
-Проект **не** добавлять в конфигурации `Debug|Release` решения (ломает сборку без SDK).
+**M3 — Android (готово 2026-11-12).** `src/DnDMap.Android/DnDMap.Android.csproj` — `net10.0-android`,
+без MAUI. `MainActivity` (`DnDMap.Host`): очистка `FilesDir/session-cache` → `MapServer` (порт 5000,
+при занятом — `Port=0`) → WebView на `http://127.0.0.1:<port>/?display=1`, keep-screen-on,
+поворот обрабатывается `ConfigurationChanges` без перезапуска сервера. По выходу сервер
+останавливается в пуле потоков (синхронный `Dispose` на UI-потоке может заблокироваться),
+кэш очищается. Адрес для мастера показывается Toast'ом. Тестовый режим SPA (`display=1`) скрывает
+пульт и отключает ввод на планшете. Серверный эндпоинт размера — `POST /api/viewport`.
+Проект **не** добавлен в конфигурации `Debug|Release` решения (ломает сборку без SDK).
+
+**M4 — CI/упаковка (готово 2026-11-12).** `.github/workflows/android.yml`: `workflow_dispatch`
+или push в любую ветку с изменениями Android/Core/Server → JDK 17 (`setup-java`), `dotnet workload install android`,
+sdkmanager (`platforms;android-36`, `build-tools;36.0.0`), `dotnet build -c Debug`.
+Debug-сборка подписывается автоматическим debug-ключом раннера → устанавливаемый APK;
+артефакт `DnDMap-android-<run>` с `**/*-Signed.apk`. Release-подпись своим keystore — на будущее.
 
 **Браузер (M2).** Выбор файлов и папки (`<input type=file>`, `webkitdirectory`) + drag&drop;
 хранение выбранного в IndexedDB; при подключении — сравнение с манифестом и досылка недостающего.
 File System Access API не используется: по `http://` в локальной сети это не secure context.
 
-**M4 — CI/упаковка.** Сборка APK, публикация артефактов, версионирование.
-
 ## Подводные камни
 
 - Корневой `Directory.Build.props` **не добавлять** — изменит сборку существующего WPF-проекта.
 - NuGet в прод-коде не использовать (автономность, Android): только BCL.
-- Android SDK/JDK 17 на машине нет (см. [troubleshooting.md](../troubleshooting.md)) — M3 локально не проверяется.
+- Android SDK/JDK 17 на машине нет, а workload `android` установлен не для текущего SDK 10.0.302
+  (`dotnet build` → NETSDK1147) — M3 локально не собирается, нужна установка тулчейна или CI.
 - При запущенном WPF-приложении сборка даёт MSB3026 (файл занят) — это не ошибка.

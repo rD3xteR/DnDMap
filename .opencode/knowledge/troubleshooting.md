@@ -26,11 +26,14 @@
 Причина: приложение запущено и держит файлы в `<DndMap>\Debug|Release` (см. `BaseOutputPath`).
 Решение: закрыть WPF-приложение и повторить сборку. Ядро и тесты (`src/*`) от этого не страдают — их можно собирать параллельно.
 
-### ✅ Android SDK / JDK для проекта `net10.0-android` отсутствуют
-Состояние машины на 2026-11-10: workload `android` 36.1.2 установлен, workload `maui` нет,
-Android platforms/build-tools и JDK 17 не установлены (есть только JDK 8 в `C:\Program Files\Android\jdk\jdk-8.0.302.8-hotspot`).
+### ⚠️ Android SDK / JDK для проекта `net10.0-android` отсутствуют
+Состояние машины на 2026-11-12: `dotnet --version` → SDK 10.0.302; workload `android` числится
+(36.1.2/10.0.100, VS 17.14), но для SDK 10.0.302 сборка даёт `NETSDK1147: требуется workload android`
+(`dotnet workload restore` не выполнялся). Android platforms/build-tools и JDK 17 не установлены
+(есть только JDK 8 в `C:\Program Files\Android\jdk\jdk-8.0.302.8-hotspot`), `ANDROID_HOME` пуст.
 Следствие: Android-проект (M3) нельзя добавить в конфигурации `Debug|Release` решения — он сломает обычную сборку.
-План: подключать его отдельно, после установки SDK/JDK 17; до этого M3 не проверяется локально.
+Варианты: `dotnet workload restore` + JDK 17 + Android SDK 36 локально, либо сборка APK в CI
+(`.github/workflows/android.yml`, нужен push в GitHub).
 
 ## Персистентность (рабочая копия)
 

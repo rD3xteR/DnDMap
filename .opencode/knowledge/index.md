@@ -21,6 +21,10 @@
 - Собрать всё: `dotnet build DnDMap.sln -c Debug`.
 - Тесты ядра: `dotnet test src/DnDMap.Core.Tests/DnDMap.Core.Tests.csproj`.
 - Тесты сервера: `dotnet test src/DnDMap.Server.Tests/DnDMap.Server.Tests.csproj`.
+- Android APK (нужны JDK 17 + Android SDK 36): `dotnet workload restore src/DnDMap.Android/DnDMap.Android.csproj`,
+  затем `dotnet build src/DnDMap.Android/DnDMap.Android.csproj -c Debug`; результат —
+  `src/DnDMap.Android/bin/Debug/net10.0-android/ru.dndmap.host-Signed.apk`.
+  В CI — workflow `Android APK` (artifact `DnDMap-android-<run>`).
 - Запустить WPF-приложение: `dotnet run --project DnDMap/DnDMap.csproj` — стартовое окно «Управление»;
   там же группа «Сервер для планшета» → «Запустить сервер» и адрес для браузера.
 - Каталог сборки **WPF-проекта — вне репозитория**: `<три уровня выше DnDMap/DnDMap>\DndMap\Debug`
@@ -33,9 +37,10 @@
 - **Закоммичено** `a286db0` `feat: add shared core, session model and core tests (#15)` — ядро, каркас сервера, 75 тестов.
 - **Закоммичено** `863e9b3` `feat: run WPF app on shared core, drop touch input (#15)` — M1: WPF на ядре,
   сенсорный ввод удалён.
-- **Готово к коммиту** (M2 + исправления веб-пульта 2026-11-12): HTTP-сервер (`MapServer`, REST/SSE/загрузка),
-  SPA `wwwroot/` в ресурсах, `DnDMap.Server.Tests` (15 тестов), ослабленный `ValidateName`,
-  группа «Сервер для планшета» в окне «Управление». Исправлены зум (`visibleRect` теперь `fit × zoom`),
-  границы панорамы/токенов и добавлен слайдер размера токенов. Тесты: ядро 82, сервер 15; живой прогон SPA — ок.
+- **Закоммичено** `d96c826` `feat: add web remote, fix zoom/bounds and token sizing (#15)` — M2:
+  HTTP-сервер, SPA, тесты сервера, группа «Сервер для планшета»; исправлены зум, границы и размер токенов.
+- **Не закоммичено** (M3/M4, 2026-11-12): `src/DnDMap.Android` (Activity + WebView, кэш `FilesDir`,
+  keep-screen-on), режим SPA `?display=1`, `POST /api/viewport`, workflow `.github/workflows/android.yml`,
+  обновлённый README. Тесты: ядро 82, сервер 17. Локальная сборка APK не проверена (нет JDK 17/Android SDK).
 - Ранее не закоммичено: персистентность путей (`Paths.settings`, `Paths.Designer.cs`, `App.config`).
 - Подробности — в [decisions.md](decisions.md), [architecture.md](architecture.md) и [troubleshooting.md](troubleshooting.md).

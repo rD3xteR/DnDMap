@@ -3,6 +3,10 @@
 
     const $ = (id) => document.getElementById(id);
 
+    // ?display=1 — экран стола на планшете: только карта, без пульта.
+    const displayMode = new URLSearchParams(location.search).has('display');
+    if (displayMode) document.body.classList.add('display');
+
     const els = {
         status: $('status'),
         filesToggle: $('filesToggle'),
@@ -144,6 +148,26 @@
     const sendDiameter = throttle((referencePx) => {
         sendCommand({ type: 'setDiameter', referencePx });
     }, 60);
+
+    // Экран стола сам сообщает CSS-размер сцены: от него зависят fit и visibleRect.
+    async function postViewport() {
+        const width = els.stage.clientWidth;
+        const height = els.stage.clientHeight;
+
+        if (width <= 0 || height <= 0) return;
+
+        try {
+            await fetch('/api/viewport', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ width, height })
+            });
+        } catch {
+            // Связь восстановится через SSE; размер дошлём при следующем resize.
+        }
+    }
+
+    const trackViewport = throttle(() => { postViewport(); }, 250);
 
     // ---------- состояние и отрисовка ----------
 
@@ -371,6 +395,7 @@
     }
 
     els.stage.addEventListener('pointerdown', (event) => {
+        if (displayMode) return;
         if (event.button !== 0 || !state.session?.map) return;
 
         const tokenId = tokenIdAt(event.target);
@@ -462,7 +487,7 @@
     els.stage.addEventListener('pointercancel', endPointer);
 
     els.stage.addEventListener('wheel', (event) => {
-        if (!state.session?.map) return;
+        if (displayMode || !state.session?.map) return;
         event.preventDefault();
 
         const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
@@ -470,7 +495,7 @@
     }, { passive: false });
 
     window.addEventListener('keydown', (event) => {
-        if (event.key !== 'Delete' || !state.selectedId) return;
+        if (displayMode || event.key !== 'Delete' || !state.selectedId) return;
 
         sendCommand({ type: 'removeToken', tokenId: state.selectedId });
         state.selectedId = null;
@@ -737,6 +762,8 @@
     // ---------- старт ----------
 
     (async function start() {
+        if (displayMode) await postViewport();
+
         try {
             const session = await api('/api/session');
             applyState(session);
@@ -748,5 +775,14 @@
         connect();
         await refreshManifest();
         await syncCache();
+
+        if (displayMode) {
+            await postViewport();
+            window.addEventListener('resize', trackViewport);
+            window.addEventListener('orientationchange', trackViewport);
+
+            // Размер сцены может измениться без события window.resize (первый layout, поворот).
+            new ResizeObserver(() => trackViewport()).observe(els.stage);
+        }
     })();
 })();

@@ -1,0 +1,57 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    # Любая ветка: APK нужен и в рабочих ветках, а не только в master.
+    branches:
+      - '**'
+    paths:
+      - 'src/DnDMap.Android/**'
+      - 'src/DnDMap.Core/**'
+      - 'src/DnDMap.Server/**'
+      - '.github/workflows/android.yml'
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android workload
+        run: dotnet workload install android
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          # На образе ubuntu-latest несколько cmdline-tools; берём первый найденный.
+          SDKMANAGER="$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -n 1)"
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+
+      # Debug-сборка подписывается автоматическим debug-ключом раннера,
+      # поэтому APK сразу устанавливается на планшет. Для публикации в магазин
+      # позже понадобится собственный keystore и Release + AndroidKeyStore.
+      - name: Build APK
+        run: dotnet build src/DnDMap.Android/DnDMap.Android.csproj -c Debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DnDMap-android-${{ github.run_number }}
+          path: src/DnDMap.Android/bin/Debug/net10.0-android/**/*-Signed.apk
+          if-no-files-found: error

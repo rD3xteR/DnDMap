@@ -246,6 +246,38 @@ public sealed class ServerApiTests
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Viewport_ChangesFitAndVisibleRect()
+    {
+        await using var server = new ServerFixture();
+
+        await server.UploadAsync("map", "board.png", ServerFixture.PngBytes(320, 200));
+        await server.SendCommandAsync(SetMapBoard);
+
+        var response = await server.Client.PostAsync(
+            "/api/viewport",
+            new StringContent("""{"width":1000,"height":1000}""", Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var session = await server.Client.GetFromJsonAsync<SessionDto>("/api/session", ProtocolJson.Options);
+
+        // fit = min(1000/320, 1000/200) = 3.125 → видимая область 320×320.
+        Assert.Equal(320, session!.VisibleRect.Width, 6);
+        Assert.Equal(320, session.VisibleRect.Height, 6);
+    }
+
+    [Fact]
+    public async Task Viewport_RejectsInvalidSize()
+    {
+        await using var server = new ServerFixture();
+
+        var response = await server.Client.PostAsync(
+            "/api/viewport",
+            new StringContent("""{"width":0,"height":1000}""", Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     private static async Task<string> ReadEventAsync(StreamReader reader, CancellationToken cancellationToken)
     {
         var data = new StringBuilder();

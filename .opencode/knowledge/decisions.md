@@ -251,3 +251,43 @@ Issue с этим планом: https://github.com/rD3xteR/DnDMap/issues/15 (с�
 сервер 15/15. Живой прогон: при `zoom=2.5` `visibleRect.width` = 1066.67 → 426.67, картинка карты
 растёт; панорама останавливается на краю (`centerX` ≤ 586.67 для карты 800); драг токена даёт
 `x=800, y=600` вместо 2864/1943; слайдер диаметра 200 → `sizeMapPx` 111.11.
+
+## 2026-11-12 — M3: Android-хост и режим экрана стола
+
+Сделано:
+
+- `src/DnDMap.Android` (`net10.0-android`, без MAUI): `MainActivity` в namespace `DnDMap.Host`,
+  `ApplicationId = ru.dndmap.host`. Старт: очистка `FilesDir/session-cache` → `MapServer` на порту 5000
+  (если занят — `Port=0`) → WebView `http://127.0.0.1:<port>/?display=1`, keep-screen-on.
+  Поворот не пересоздаёт Activity (`ConfigurationChanges`), кэш чистится и в `OnDestroy`;
+  `Dispose` сервера уводится в пул, чтобы не заблокировать UI-поток на `StopAsync`.
+  Адрес для мастера — Toast с локальным IPv4. Разрешения: `INTERNET`, `ACCESS_NETWORK_STATE`;
+  `usesCleartextTraffic=true` для HTTP на localhost.
+- SPA: режим `?display=1` скрывает шапку и панель файлов, отключает панораму/драг/зум/Delete на планшете.
+- Новый маршрут `POST /api/viewport` `{width,height}` → `MapSession.SetViewport`; ответ
+  `{accepted,revision}`. Экран стола присылает CSS-размер сцены при старте, `resize`,
+  `orientationchange` и по `ResizeObserver` (первый layout может не дать `window.resize` —
+  без observer сервер оставался с чужим размером).
+- Тесты сервера: 17 (+2) — `/api/viewport` меняет `visibleRect` (320×320 при 1000×1000 и карте 320×200)
+  и отклоняет нулевой размер. Важно: сервер не поддерживает chunked body, поэтому тест шлёт `StringContent`
+  (`PostAsJsonAsync` использует chunked → 400 «Пустой размер вьюпорта»).
+
+Проверка: сборка `DnDMap.sln` Debug/Release — 0 предупреждений; живой прогон в Chromium:
+экран `?display=1` (779×878, шапка `display:none`) отправил размер, после `setMap` сервер отдал
+`visibleRect` 800×901.67; панорама с планшета не сработала; в пульте зум 2× дал 400×444.56,
+панорама ограничилась `centerX=600, centerY=377.72`.
+
+Не проверено: сама сборка APK — локально нет JDK 17/Android SDK и workload для SDK 10.0.302.
+
+## 2026-11-12 — M4: APK в CI
+
+- `.github/workflows/android.yml`: `workflow_dispatch` + push в **любую** ветку при изменениях
+  `src/DnDMap.Android|Core|Server` (APK нужен и в рабочих ветках, а не только в `master`); JDK 17,
+  `dotnet workload install android`, sdkmanager
+  (`platforms;android-36`, `build-tools;36.0.0`), `dotnet build -c Debug`.
+- Решение: собирать **Debug**, потому что он автоматически подписывается debug-ключом раннера и сразу
+  ставится на планшет. Release без своего keystore даёт unsigned APK; собственная подпись — отдельный шаг,
+  когда понадобится распространение.
+- Артефакт `DnDMap-android-<run>` c `**/*-Signed.apk`; путь к локальной сборке и установке — в README.
+- Android-проект намеренно не добавлен в `DnDMap.sln` (конфигурации `Debug|Release`), чтобы обычная
+  сборка работала без Android-тулчейна.

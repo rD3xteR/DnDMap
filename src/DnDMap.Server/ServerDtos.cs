@@ -9,4 +9,7 @@ public sealed record UploadResultDto(string Name, long Size, string Hash);
 
 public sealed record CommandResultDto(bool Accepted, long Revision);
 
+/// <summary>CSS-размер окна дисплея (планшета), в котором живёт сессия.</summary>
+public sealed record ViewportDto(double Width, double Height);
+
 public sealed record ErrorDto(string Error, string? Code = null);

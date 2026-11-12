@@ -253,6 +253,12 @@ public sealed class MapServer : IDisposable
             return;
         }
 
+        if (segments is ["api", "viewport"] && request.Method == "POST")
+        {
+            await HandleViewportAsync(request, stream, cancellationToken);
+            return;
+        }
+
         if (segments is ["api", "files"] && request.Method == "GET")
         {
             await HandleManifestAsync(request, stream, cancellationToken);
@@ -280,7 +286,7 @@ public sealed class MapServer : IDisposable
             return;
         }
 
-        var known = segments is ["api", "session"] or ["api", "commands"] or ["api", "files"]
+        var known = segments is ["api", "session"] or ["api", "commands"] or ["api", "files"] or ["api", "viewport"]
                     || (segments.Count >= 3 && segments[0] is "api" or "files");
 
         await HttpProtocol.WriteErrorAsync(
@@ -363,6 +369,47 @@ public sealed class MapServer : IDisposable
             accepted ? 200 : 409,
             new CommandResultDto(accepted, _session.Revision),
             cancellationToken);
+    }
+
+    private async Task HandleViewportAsync(HttpRequest request, Stream stream, CancellationToken cancellationToken)
+    {
+        if (request.ContentLength <= 0)
+        {
+            await HttpProtocol.WriteErrorAsync(stream, 400, "Пустой размер вьюпорта.", cancellationToken);
+            return;
+        }
+
+        if (request.ContentLength > MaxJsonBytes)
+        {
+            await HttpProtocol.WriteErrorAsync(stream, 413, "Размер вьюпорта слишком большой.", cancellationToken);
+            return;
+        }
+
+        ViewportDto? viewport;
+
+        try
+        {
+            viewport = await JsonSerializer.DeserializeAsync<ViewportDto>(
+                request.Body, ProtocolJson.Options, cancellationToken);
+        }
+        catch (JsonException ex)
+        {
+            await HttpProtocol.WriteErrorAsync(stream, 400, $"Некорректный JSON: {ex.Message}", cancellationToken);
+            return;
+        }
+
+        if (viewport is null
+            || viewport.Width <= 0 || viewport.Height <= 0
+            || viewport.Width > 20000 || viewport.Height > 20000)
+        {
+            await HttpProtocol.WriteErrorAsync(stream, 400, "Некорректный размер вьюпорта.", cancellationToken);
+            return;
+        }
+
+        var changed = _session.SetViewport(viewport.Width, viewport.Height);
+
+        await HttpProtocol.WriteJsonAsync(
+            stream, 200, new CommandResultDto(changed, _session.Revision), cancellationToken);
     }
 
     private async Task HandleManifestAsync(HttpRequest request, Stream stream, CancellationToken cancellationToken)

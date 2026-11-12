@@ -14,6 +14,7 @@ Currently, it's in a stage of `lazy development` where the main functionality is
 - Token diameter follows the D&D size categories: `Normal` / `Big` / `Huge` → ×1 / ×2 / ×3 of the base diameter.
 - Adjustable base diameter (slider, 20–200 px, default 100 px), applied to all tokens at once.
 - Pan the map by dragging, zoom with `Ctrl` + mouse wheel or the vertical slider (1×–3×), reset the view with `Reset`. The map always covers the screen, so it cannot be dragged out of view; at 1× it is fully visible and centred.
+- **Tablet mode:** an Android tablet runs the HTTP host and shows the map fullscreen; the DM opens `http://<tablet-ip>:5000/` in a laptop browser and controls maps, tokens, zoom and token size from there.
 - The last used map/token folders are remembered between sessions.
 
 ## Requirements
@@ -53,19 +54,24 @@ dotnet run --project DnDMap/DnDMap.csproj
 
 ```
 DnDMap.sln
-├── DnDMap/                        # the only project — WPF app
+├── DnDMap/                        # WPF host (desktop)
 │   ├── App.xaml(.cs)              # entry point; startup window = SettingsWindow
-│   ├── SettingsWindow/            # «Управление» window (XAML + partial ViewModel)
+│   ├── SettingsWindow/            # «Управление» window + HTTP-server controls
 │   ├── MapWindow/                 # fullscreen map window + MapViewModel (partial)
 │   ├── TokenModel/                # Token model + its behavior (partial classes)
 │   ├── Models/                    # ImageItem, EntitySizeItem
-│   ├── Core/                      # ViewModelBase, RelayCommand, GlobalSettings,
-│   │                               # enums, converters, WPF/markup extensions
+│   ├── Core/                      # UI infrastructure (ViewModelBase, RelayCommand, …)
 │   ├── Paths.settings / App.config# persisted map & token folders (user settings)
 │   └── src/logo.ico               # application icon
+├── src/DnDMap.Core/               # geometry, session model, storage, protocol (BCL only)
+├── src/DnDMap.Server/             # HTTP host: REST + SSE + embedded SPA (wwwroot/)
+├── src/DnDMap.Core.Tests/         # xUnit tests for the core
+├── src/DnDMap.Server.Tests/       # xUnit tests against a live HTTP server
+├── src/DnDMap.Android/            # Android tablet host (net10.0-android, no MAUI)
 ├── build-installer.ps1            # build + publish + Inno Setup installer script
 ├── DnDMap.iss                     # Inno Setup script (produces Setup\DnDMap-Setup.exe)
-├── .github/workflows/release.yml  # build & release pipeline (tag v*)
+├── .github/workflows/release.yml  # WPF installer pipeline (tag v*)
+├── .github/workflows/android.yml  # APK pipeline (branch push / manual)
 ├── publish/                       # local `dotnet publish` output (git-ignored)
 └── global.json                    # .NET SDK selection
 ```
@@ -91,10 +97,30 @@ The installer is **per-user** (installs to `%LOCALAPPDATA%\DnDMap`, no admin/UAC
 
 The GitHub Actions workflow `.github/workflows/release.yml` runs on tags matching `v*` (or manually via *workflow_dispatch*, version `0.0.0-dev`), builds everything with the script, uploads `DnDMap-Setup-<version>` as an artifact and attaches `Setup/DnDMap-Setup.exe` to the GitHub release when the run was triggered by a tag.
 
+## Android host (APK)
+
+`src/DnDMap.Android` is a plain `net10.0-android` app (no MAUI). It starts the same `DnDMap.Server` on port 5000, keeps the screen on and opens the SPA with `?display=1` in a fullscreen WebView, so the tablet shows only the map. Maps and tokens are cached in `FilesDir/session-cache` and wiped on app start and exit; the DM's browser keeps the originals in IndexedDB and re-uploads missing files.
+
+Build requirements: Android workload, JDK 17 and Android SDK 35+.
+
+```powershell
+dotnet workload restore src/DnDMap.Android/DnDMap.Android.csproj
+dotnet build src/DnDMap.Android/DnDMap.Android.csproj -c Debug
+```
+
+The installable APK is `src/DnDMap.Android/bin/Debug/net10.0-android/ru.dndmap.host-Signed.apk`. Install it with `adb install -r <apk>` or copy it to the tablet and open it (allow installation from unknown sources).
+
+On launch the app shows a toast with the address for the DM, e.g. `http://192.168.1.42:5000/`. Open it in a browser on the laptop — the remote control page has file upload, map/token selection, zoom and token-size controls.
+
+The GitHub Actions workflow `.github/workflows/android.yml` builds the APK on every push to any branch that touches the host projects (or via *workflow_dispatch*) and uploads `DnDMap-android-<run>` as an artifact. The debug build is signed with the runner's debug key, so it installs directly; release signing with your own keystore is a later step.
+
+> The Android project is intentionally **not** part of `Debug|Release` solution configurations, so `dotnet build DnDMap.sln` keeps working on machines without the Android toolchain.
+
 ## Status / known limitations
 
-- No automated tests: the solution contains no test projects.
-- Tokens and the open map are not persisted between sessions — everything is reset when the map window closes. (Switching to another map in the still-open window keeps the tokens.)
+- Automated tests cover the shared core and the HTTP server (`src/DnDMap.Core.Tests`, `src/DnDMap.Server.Tests`).
+- Tokens and the open map are not persisted between sessions — everything is reset when the map window (or the Android app) closes. (Switching to another map in the still-open window keeps the tokens.)
 - Closing the control window exits the whole application (`ShutdownMode.OnMainWindowClose`).
 - The installer is not code-signed — Windows SmartScreen may warn on first run.
 - The full CI pipeline (Inno Setup compilation + release upload) is verified by the first `workflow_dispatch`/tag run, not locally.
+- The Android host has no authentication and assumes a trusted local network; the APK from CI is debug-signed.

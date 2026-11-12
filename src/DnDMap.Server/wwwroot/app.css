@@ -265,3 +265,13 @@ body {
 .empty.hidden {
     display: none;
 }
+
+/* Режим экрана стола: только карта, без элементов управления. */
+body.display #bar,
+body.display #files {
+    display: none !important;
+}
+
+body.display .token {
+    cursor: default;
+}

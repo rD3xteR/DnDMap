@@ -1,11 +1,12 @@
 # Архитектура DnDMap
 
-Обновлено: 2026-11-11 (M2: HTTP-сервер и веб-пульт). Код ссылается на файлы в рабочей копии.
+Обновлено: 2026-11-12 (M3: Android-хост; M2: HTTP-сервер и веб-пульт). Код ссылается на файлы в рабочей копии.
 
 ## Общая схема
 
-Четыре рабочих проекта: WPF-оболочка, ядро, HTTP-сервер и веб-пульт (статика внутри сервера). UI — MVVM без фреймворков:
-свой `ViewModelBase` и `RelayCommand` остались в WPF-проекте как UI-обвязка, состояние игры — в ядре.
+Пять рабочих проектов: WPF-оболочка, ядро, HTTP-сервер, веб-пульт (статика внутри сервера) и Android-хост.
+UI — MVVM без фреймворков: свой `ViewModelBase` и `RelayCommand` остались в WPF-проекте как UI-обвязка,
+состояние игры — в ядре.
 
 ```
 App.xaml (StartupUri = SettingsWindow)
@@ -27,6 +28,19 @@ App.xaml (StartupUri = SettingsWindow)
 
 Браузер и WPF-окно карты **не разделяют сессию** (M2): у сервера свой `MapSession`, у окна карты свой.
 Это зафиксированный долг — сведение в одну сессию отдельной задачей.
+
+Android-хост (M3) использует тот же `MapServer`, но вместо WPF-окна открывает SPA в WebView:
+
+```
+MainActivity (src/DnDMap.Android)
+   ├── FilesDir/session-cache  (очистка при старте и выходе)
+   ├── MapServer (порт 5000, 0.0.0.0; при занятом порте — свободный)
+   └── WebView → http://127.0.0.1:<port>/?display=1
+         └── SPA без шапки/панели; по ResizeObserver шлёт POST /api/viewport
+```
+
+`/api/viewport` задаёт `MapSession` живой CSS-размер экрана стола. Пульт мастера открывается с ноутбука
+по адресу из Toast (`http://<ip-планшета>:<port>/`) и управляет той же сессией.
 
 ## Точки входа
 
@@ -58,6 +72,8 @@ App.xaml (StartupUri = SettingsWindow)
    (px эталонного экрана 1920×1080) → `SetDiameterCommand` → `MapToken.Size` в px карты.
 6. **Веб-пульт** — браузер шлёт `POST /api/commands`, сервер применяет команду к своей `MapSession`,
    `Changed` → SSE-событие `state` с полным `SessionDto` (токены в px карты, `visibleRect`).
+   Экран стола в режиме `?display=1` шлёт `POST /api/viewport` со своим CSS-размером (при старте и resize),
+   чтобы fit/видимая область соответствовали планшету.
    Файлы: браузер загружает `PUT /api/files/{kind}/{name}` (сырое тело), читает манифест
    `GET /api/files?kind=…` и досылает недостающее из IndexedDB; картинки — `GET /files/{kind}/{name}`.
 7. **Запуск сервера** — `SettingsViewModel.StartServer`: очистка кэша → `MapServer.Start()` → URL
@@ -80,6 +96,7 @@ App.xaml (StartupUri = SettingsWindow)
 | --- | --- | --- |
 | `src/DnDMap.Core` | только BCL | геометрия кадра, сессия, команды, хранилище, размеры изображений |
 | `src/DnDMap.Server` | `DnDMap.Core`, BCL (`TcpListener`) | HTTP/1.1, REST, SSE, манифест и загрузка файлов, SPA из ресурсов |
+| `src/DnDMap.Android` | `DnDMap.Core`, `DnDMap.Server`, Android SDK | Activity + WebView, кэш `FilesDir`, keep-screen-on |
 | `DnDMap/Core/` | WPF (`ICommand`, `MarkupExtension`) | `ViewModelBase`, `RelayCommand`, конвертеры, расширения разметки |
 | `DnDMap/Models/` | — | DTO списков: `ImageItem` |
 | `DnDMap/MapWindow/` | `DnDMap.Core`, `Core/` | окно карты + `MapViewModel` (partial: `MainViewModel`, `Properties`, `Tokens`, `ZoomPan`) + `TokenViewModel` |
@@ -104,8 +121,9 @@ App.xaml (StartupUri = SettingsWindow)
 | --- | --- | --- | --- |
 | `src/DnDMap.Core` | net10.0 | геометрия кадра, модель сессии, DTO, хранилище, размеры изображений | готово, покрыто тестами |
 | `src/DnDMap.Server` | net10.0 | HTTP-сервер на BCL (`TcpListener`), SSE, SPA в ресурсах | готово (M2), покрыто тестами |
-| `src/DnDMap.Core.Tests` | net10.0 | xUnit-тесты ядра | 78 тестов, все зелёные |
-| `src/DnDMap.Server.Tests` | net10.0 | xUnit-тесты API/SSE/загрузки на живом сервере | 15 тестов, все зелёные |
+| `src/DnDMap.Android` | net10.0-android | экран стола + хостинг сервера | готово (M3), локально не собиралось без SDK/JDK 17 |
+| `src/DnDMap.Core.Tests` | net10.0 | xUnit-тесты ядра | 82 теста, все зелёные |
+| `src/DnDMap.Server.Tests` | net10.0 | xUnit-тесты API/SSE/загрузки на живом сервере | 17 тестов, все зелёные |
 
 Поток данных после M2:
 
