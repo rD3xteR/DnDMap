@@ -32,8 +32,16 @@
 (`dotnet workload restore` не выполнялся). Android platforms/build-tools и JDK 17 не установлены
 (есть только JDK 8 в `C:\Program Files\Android\jdk\jdk-8.0.302.8-hotspot`), `ANDROID_HOME` пуст.
 Следствие: Android-проект (M3) нельзя добавить в конфигурации `Debug|Release` решения — он сломает обычную сборку.
-Варианты: `dotnet workload restore` + JDK 17 + Android SDK 36 локально, либо сборка APK в CI
-(`.github/workflows/android.yml`, нужен push в GitHub).
+Варианты: `dotnet workload restore` + JDK 17 + Android SDK 36 локально, либо сборка APK в CI.
+**Проверено 2026-11-12:** CI-сборка работает — workflow `Android APK` #1 (ветка `feature/15-m0-core`)
+прошёл все шаги (JDK 17, workload, sdkmanager `platforms;android-36`, `dotnet build -c Debug`) и выложил
+артефакт `DnDMap-android-1` (~6.1 МБ) с подписанным debug-APK. Локальный тулчейн для этого не нужен.
+
+### ✅ C#-код Android-проекта проверялся без Android SDK
+Так как `dotnet build src/DnDMap.Android` локально невозможен (NETSDK1147), `MainActivity.cs` проверялся
+временным проектом `%TEMP%\opencode\AndroidTypeCheck` (`net10.0` + `Reference` на `Mono.Android.dll`
+из `packs\Microsoft.Android.Ref.35\ref\net9.0`). Итог: 0 ошибок; предупреждения только CA1416 —
+артефакт того, что временный проект не таргетит `net10.0-android`, в реальной сборке их нет.
 
 ## Персистентность (рабочая копия)
 
@@ -209,6 +217,32 @@ SPA повторяет `ClampAxis` и отправляет уже огранич
 ### ⚠️ `NetworkStream` требует `using System.Net.Sockets`
 `HttpProtocol` живёт в `DnDMap.Server`, где глобальных using'ов ядра нет — без этого using сборка
 падает на `CS0246`. Аналогично `Xunit` в тестах подключается явным `using Xunit;`.
+
+## M3: Android-хост
+
+### ✅ Исправлено 2026-11-12: APK запускается и сразу вылетает (Fast Deployment)
+Симптом: установленный вручную APK (`ru.dndmap.host-Signed.apk` из CI) закрывается мгновенно,
+без экрана. В `logcat -b crash` видно:
+```
+F libc    : Fatal signal 6 (SIGABRT) ... in tid ... (ru.dndmap.host)
+F DEBUG   : Abort message: 'No assemblies found in
+  '/data/user/0/ru.dndmap.host/files/.__override__/x86_64' or '<unavailable>'.
+  Assuming this is part of Fast Deployment. Exiting...'
+```
+Причина: `Debug`-сборка .NET Android по умолчанию использует **Fast Deployment** — managed-сборки
+остаются на машине сборки и доливаются по adb только при `dotnet build -t:Run`. В APK их нет,
+поэтому ручная установка ломается (Release этим не страдает).
+Решение: `<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>` в `src/DnDMap.Android/DnDMap.Android.csproj`;
+workflow дополнительно проверяет, что в APK есть `assemblies/`.
+Если снова такой вылет — смотреть `assemblies/` в APK, а не искать баг в `MainActivity`.
+
+### ⚠️ BlueStacks: `adb shell` рвётся с `error: closed`
+Встроенный `C:\Program Files\BlueStacks_nxt\HD-Adb.exe` — очень старый (1.0.36). Симптомы:
+`adb devices` показывает два транспорта на одно устройство (`emulator-5554` и `127.0.0.1:5555`),
+`shell`/`logcat` падают с `error: closed`, демон на 5037 умирает от конфликта портов.
+Что помогло: включить в BlueStacks «Настройки → Дополнительно → Отладка по ADB», затем
+`HD-Adb kill-server`, `start-server`, `connect 127.0.0.1:5555` и работать через `-s 127.0.0.1:5555`.
+Логи: `logcat -d -b crash` (там `Abort message`) и `logcat -d`.
 
 ## Мелочи
 

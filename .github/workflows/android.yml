@@ -49,6 +49,17 @@ jobs:
       - name: Build APK
         run: dotnet build src/DnDMap.Android/DnDMap.Android.csproj -c Debug
 
+      # Страховка от Fast Deployment: если managed-сборки не попали в APK,
+      # установленное вручную приложение падает с "No assemblies found ... .__override__".
+      - name: Verify APK is self-contained
+        run: |
+          set -euo pipefail
+          APK="$(ls src/DnDMap.Android/bin/Debug/net10.0-android/*-Signed.apk)"
+          echo "APK: $APK ($(du -h "$APK" | cut -f1))"
+          unzip -l "$APK" | head -n 15
+          unzip -l "$APK" | grep -q "assemblies/" || {
+            echo "::error::APK does not embed managed assemblies (fast deployment)"; exit 1; }
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

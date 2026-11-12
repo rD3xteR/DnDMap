@@ -39,8 +39,12 @@
   сенсорный ввод удалён.
 - **Закоммичено** `d96c826` `feat: add web remote, fix zoom/bounds and token sizing (#15)` — M2:
   HTTP-сервер, SPA, тесты сервера, группа «Сервер для планшета»; исправлены зум, границы и размер токенов.
-- **Не закоммичено** (M3/M4, 2026-11-12): `src/DnDMap.Android` (Activity + WebView, кэш `FilesDir`,
-  keep-screen-on), режим SPA `?display=1`, `POST /api/viewport`, workflow `.github/workflows/android.yml`,
-  обновлённый README. Тесты: ядро 82, сервер 17. Локальная сборка APK не проверена (нет JDK 17/Android SDK).
+- **Закоммичено** `b92a928` `feat: run map host on Android tablet with APK pipeline (#15)` — M3/M4:
+  `src/DnDMap.Android` (Activity + WebView, кэш `FilesDir`, keep-screen-on), режим SPA `?display=1`,
+  `POST /api/viewport` (+2 теста), workflow `.github/workflows/android.yml`, README и база знаний.
+  Ветка `feature/15-m0-core` запушена в `origin`; workflow собирает Debug-APK на push в любую ветку.
+  Первый же прогон CI (`Android APK` #1, run 43171726784) — **success**: артефакт `DnDMap-android-1`
+  (~6.1 МБ, `ru.dndmap.host-Signed.apk`). Тесты: ядро 82, сервер 17.
+  Локальная сборка APK по-прежнему не проверена (нет JDK 17/Android SDK) — APK берётся из CI.
 - Ранее не закоммичено: персистентность путей (`Paths.settings`, `Paths.Designer.cs`, `App.config`).
 - Подробности — в [decisions.md](decisions.md), [architecture.md](architecture.md) и [troubleshooting.md](troubleshooting.md).

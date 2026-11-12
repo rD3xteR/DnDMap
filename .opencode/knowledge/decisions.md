@@ -277,7 +277,8 @@ Issue с этим планом: https://github.com/rD3xteR/DnDMap/issues/15 (с�
 `visibleRect` 800×901.67; панорама с планшета не сработала; в пульте зум 2× дал 400×444.56,
 панорама ограничилась `centerX=600, centerY=377.72`.
 
-Не проверено: сама сборка APK — локально нет JDK 17/Android SDK и workload для SDK 10.0.302.
+Не проверено локально: сама сборка APK — нет JDK 17/Android SDK и workload для SDK 10.0.302.
+Проверено в CI 2026-11-12: run 43171726784 (`Android APK` #1) — success, артефакт `DnDMap-android-1` (~6.1 МБ).
 
 ## 2026-11-12 — M4: APK в CI
 
@@ -291,3 +292,18 @@ Issue с этим планом: https://github.com/rD3xteR/DnDMap/issues/15 (с�
 - Артефакт `DnDMap-android-<run>` c `**/*-Signed.apk`; путь к локальной сборке и установке — в README.
 - Android-проект намеренно не добавлен в `DnDMap.sln` (конфигурации `Debug|Release`), чтобы обычная
   сборка работала без Android-тулчейна.
+
+## 2026-11-12 — исправление: APK падал при запуске (Fast Deployment)
+
+Пользователь поставил первый APK на планшет и в BlueStacks — в обоих случаях мгновенный вылет.
+Стектрейс снят через `adb logcat -b crash` из BlueStacks: `SIGABRT`, `Abort message: 'No assemblies
+found in /data/user/0/ru.dndmap.host/files/.__override__/x86_64 ... Fast Deployment. Exiting...'`.
+
+Причина не в коде приложения: Debug-сборка .NET Android использует Fast Deployment — managed-сборки
+не пакуются в APK, их заливает `dotnet build -t:Run` по adb. APK, скачанный артефактом и
+установленный вручную, поэтому нерабочий. Release этим не страдает (сборки вшиваются всегда).
+
+Решение: `EmbedAssembliesIntoApk=true` в `src/DnDMap.Android/DnDMap.Android.csproj` (Debug остаётся
+debug-подписанным, но становится самодостаточным) + шаг CI `Verify APK is self-contained`, который
+проверяет наличие `assemblies/` в APK, чтобы регрессия ловилась до установки на планшет.
+Диагностика BlueStacks (`HD-Adb` 1.0.36, `error: closed`) описана в [troubleshooting.md](troubleshooting.md).

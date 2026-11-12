@@ -14,6 +14,12 @@
     <ApplicationVersion>1</ApplicationVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <IsPackable>false</IsPackable>
+
+    <!-- Debug в .NET Android по умолчанию использует Fast Deployment: managed-сборки
+         лежат не в APK, а доливаются по adb при `dotnet build -t:Run`. Такой APK,
+         установленный вручную, падает с "No assemblies found ... .__override__".
+         Вшиваем сборки в APK, чтобы файл был самодостаточным (Release так и так). -->
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
   </PropertyGroup>
 
   <ItemGroup>
