@@ -37,6 +37,7 @@ MainActivity (src/DnDMap.Android)
    ├── MapServer (порт 5000, 0.0.0.0; при занятом порте — свободный)
    └── WebView → http://127.0.0.1:<port>/?display=1
          └── SPA без шапки/панели; по ResizeObserver шлёт POST /api/viewport
+               + touch-управление: pinch, кнопки «−/+», drag токенов, панорама
 ```
 
 `/api/viewport` задаёт `MapSession` живой CSS-размер экрана стола. Адрес пульта: `GET /api/host`

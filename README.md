@@ -114,7 +114,30 @@ The installable APK is `src/DnDMap.Android/bin/Debug/net10.0-android/ru.dndmap.h
 
 On launch the app shows a toast with the address for the DM, e.g. `http://192.168.1.42:5000/`. The waiting screen on the tablet also keeps showing this address (plus alternatives if the host has several network interfaces) until a map is opened; the data comes from `GET /api/host`. Open the address in a browser on the laptop — the remote control page has file upload, map/token selection, zoom and token-size controls.
 
-The GitHub Actions workflow `.github/workflows/android.yml` builds the APK on every push to any branch that touches the host projects (or via *workflow_dispatch*) and uploads `DnDMap-android-<run>` as an artifact. The debug build is signed with the runner's debug key, so it installs directly; release signing with your own keystore is a later step.
+Tablet controls (only in `?display=1`): pinch with two fingers zooms around the gesture centre, the translucent `−`/`+` buttons in the bottom-right corner zoom by steps, one finger drags a token, and dragging empty space pans the map. All of it goes through the same `POST /api/commands` as the DM's remote control, so both screens stay in sync.
+
+The GitHub Actions workflow `.github/workflows/android.yml` builds the APK on every push to any branch that touches the host projects (or via *workflow_dispatch*) and uploads `DnDMap-android-<run>` as an artifact.
+
+### Signing and in-place updates
+
+The APK is a Debug build (keeps debug information) but is signed with a **permanent keystore** stored in GitHub secrets, so a new APK installs over the old one without uninstalling. Add these repository secrets (*Settings → Secrets and variables → Actions*):
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | base64 of the `.jks` file |
+| `ANDROID_KEY_ALIAS` | `dndmap` |
+| `ANDROID_KEYSTORE_PASSWORD` | store password |
+| `ANDROID_KEY_PASSWORD` | key password |
+
+Without them the `Decode signing keystore` step fails with an explicit error. The keystore is **not** committed — keep it outside the repository (the signing key is the only way to update an installed app). To put the base64 into the clipboard on Windows:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\DnDMap-signing\dndmap.jks")) | Set-Clipboard
+```
+
+The very first install after switching to this key still requires uninstalling the old debug-signed build (Android refuses a signature change); every later update installs in place (`adb install -r` or opening the APK on the tablet).
+
+The app icon is generated from `DnDMap/src/logo.ico` (256×256 frame): legacy `mipmap-*` PNGs plus an adaptive icon for Android 8+.
 
 > The Android project is intentionally **not** part of `Debug|Release` solution configurations, so `dotnet build DnDMap.sln` keeps working on machines without the Android toolchain.
 
@@ -125,4 +148,4 @@ The GitHub Actions workflow `.github/workflows/android.yml` builds the APK on ev
 - Closing the control window exits the whole application (`ShutdownMode.OnMainWindowClose`).
 - The installer is not code-signed — Windows SmartScreen may warn on first run.
 - The full CI pipeline (Inno Setup compilation + release upload) is verified by the first `workflow_dispatch`/tag run, not locally.
-- The Android host has no authentication and assumes a trusted local network; the APK from CI is debug-signed.
+- The Android host has no authentication and assumes a trusted local network; the APK from CI is a debug build signed with the project's own keystore.

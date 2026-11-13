@@ -43,11 +43,36 @@ jobs:
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
 
-      # Debug-сборка подписывается автоматическим debug-ключом раннера,
-      # поэтому APK сразу устанавливается на планшет. Для публикации в магазин
-      # позже понадобится собственный keystore и Release + AndroidKeyStore.
+      # Постоянный ключ подписи: без него каждый прогон подписывает APK новым debug-ключом
+      # раннера, и Android не даёт поставить новую версию поверх старой.
+      - name: Decode signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "::error::Add ANDROID_KEYSTORE_BASE64 secret (see README, Android host)"
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/dndmap.jks"
+          ls -l "$RUNNER_TEMP/dndmap.jks"
+
+      # Debug-сборка сохраняет отладочную информацию, но подписывается постоянным ключом
+      # из секретов, поэтому обновления ставятся поверх без удаления приложения.
       - name: Build APK
-        run: dotnet build src/DnDMap.Android/DnDMap.Android.csproj -c Debug -p:EmbedAssembliesIntoApk=true
+        env:
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          dotnet build src/DnDMap.Android/DnDMap.Android.csproj -c Debug \
+            -p:EmbedAssembliesIntoApk=true \
+            -p:AndroidKeyStore=true \
+            -p:AndroidSigningKeyStore="$RUNNER_TEMP/dndmap.jks" \
+            -p:AndroidSigningKeyAlias="$ANDROID_KEY_ALIAS" \
+            -p:AndroidSigningStorePass="$ANDROID_KEYSTORE_PASSWORD" \
+            -p:AndroidSigningKeyPass="$ANDROID_KEY_PASSWORD"
 
       # Страховка от Fast Deployment: если managed-сборки не попали в APK,
       # установленное вручную приложение падает с "No assemblies found ... .__override__".

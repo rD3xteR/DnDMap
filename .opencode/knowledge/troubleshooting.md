@@ -243,6 +243,29 @@ workflow дополнительно проверяет, что managed-сбор�
 Ориентир: самодостаточный Debug-APK весит ~40 МБ, fast-deployment APK — ~6 МБ.
 Если снова такой вылет — проверять наличие assembly store в APK, а не искать баг в `MainActivity`.
 
+### ⚠️ Обновление APK требует удаления: подпись разными ключами
+Симптом: `adb install -r` (или установка APK с планшета) падает с
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package ru.dndmap.host signatures do not match previously
+installed version`, либо Android предлагает сначала удалить приложение.
+Причина: каждый прогон CI подписывал Debug-APK автоматическим debug-ключом раннера, а ключ
+создаётся заново на каждом runner. Android разрешает обновление только с той же подписью.
+Решение: постоянный keystore в GitHub Secrets (см. README, «Signing and in-place updates») и шаг
+`Decode signing keystore` в `.github/workflows/android.yml`; сборка идёт с
+`-p:AndroidKeyStore=true -p:AndroidSigningKeyStore=...`.
+Первый переход всё равно требует один раз удалить старую debug-версию — подпись нельзя сменить
+на месте. Дальше обновления ставятся поверх.
+Секреты (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEY_ALIAS`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_PASSWORD`) обязательны: без `ANDROID_KEYSTORE_BASE64` шаг падает с явной ошибкой,
+а не собирает APK с другим ключом.
+
+### ⚠️ Иконка приложения: исходник — только `logo.ico` с одним PNG-кадром
+`DnDMap/src/logo.ico` содержит 9 кадров, но PNG (32bpp ARGB) только один — 256×256; остальные
+кадры старые BMP. Для Android нарезаны `mipmap-*/ic_launcher(_round).png` (48…192 px) и
+`ic_launcher_foreground.png` (108…432 px) + `mipmap-anydpi-v26/ic_launcher*.xml`.
+Повторная нарезка: взять PNG-кадр из ICO (offset из таблицы каталога), ресайз `System.Drawing`
+с `HighQualityBicubic`, foreground — 66/108 от полного размера с прозрачным полем.
+`values/colors.xml` задаёт белый фон adaptive icon; для тёмной темы менять здесь.
+
 ### ⚠️ BlueStacks: `adb shell` рвётся с `error: closed`
 Встроенный `C:\Program Files\BlueStacks_nxt\HD-Adb.exe` — очень старый (1.0.36). Симптомы:
 `adb devices` показывает два транспорта на одно устройство (`emulator-5554` и `127.0.0.1:5555`),

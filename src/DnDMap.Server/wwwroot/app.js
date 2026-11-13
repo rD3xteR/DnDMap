@@ -28,6 +28,9 @@
         empty: $('empty'),
         emptyHint: $('emptyHint'),
         emptyAddress: $('emptyAddress'),
+        touchControls: $('touchControls'),
+        touchZoomIn: $('touchZoomIn'),
+        touchZoomOut: $('touchZoomOut'),
         stage: $('stage'),
         note: $('note'),
         mapCount: $('mapCount'),
@@ -43,7 +46,9 @@
         sliderActive: false,
         tokenNodes: new Map(),
         manifest: null,
-        host: null
+        host: null,
+        pointers: new Map(),
+        pinch: null
     };
 
     const MAX_UPLOAD_BYTES = 256 * 1024 * 1024;
@@ -204,6 +209,7 @@
         if (!session || !session.map || width <= 0 || height <= 0) {
             els.mapImage.style.display = 'none';
             els.empty.classList.remove('hidden');
+            els.touchControls.classList.add('hidden');
             renderEmpty();
             els.tokens.replaceChildren();
             state.tokenNodes.clear();
@@ -213,6 +219,8 @@
 
         const rect = session.visibleRect;
         if (!rect || rect.width <= 0 || rect.height <= 0) return;
+
+        els.touchControls.classList.remove('hidden');
 
         const scale = Math.min(width / rect.width, height / rect.height);
         const offsetX = (width - rect.width * scale) / 2;
@@ -448,13 +456,51 @@
     }
 
     function selectToken(id) {
+        // На экране стола выделение не нужно: токены просто перетаскиваются.
+        if (displayMode) return;
+
         state.selectedId = id;
         render();
     }
 
+    function pointerDistance(first, second) {
+        return Math.hypot(first.x - second.x, first.y - second.y);
+    }
+
+    function cancelInteraction() {
+        if (state.drag) {
+            sendMove.flush();
+            state.tokenNodes.get(state.drag.id)?.classList.remove('dragging');
+            state.drag = null;
+        }
+
+        if (state.pan) {
+            sendView.flush();
+            state.pan = null;
+        }
+    }
+
     els.stage.addEventListener('pointerdown', (event) => {
-        if (displayMode) return;
         if (event.button !== 0 || !state.session?.map) return;
+
+        state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+        // Второй палец включает pinch-зум; начатые drag/pan отменяем.
+        if (state.pointers.size === 2) {
+            cancelInteraction();
+            const [first, second] = [...state.pointers.values()];
+            state.pinch = {
+                ids: [...state.pointers.keys()],
+                lastDistance: pointerDistance(first, second)
+            };
+
+            els.stage.setPointerCapture(event.pointerId);
+            els.stage.classList.add('busy');
+            event.preventDefault();
+            return;
+        }
+
+        if (state.pointers.size > 2) return;
 
         const tokenId = tokenIdAt(event.target);
 
@@ -495,6 +541,28 @@
         const layout = state.layout;
         if (!layout || !state.session?.map) return;
 
+        if (state.pointers.has(event.pointerId)) {
+            state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        }
+
+        // Pinch: масштаб меняется относительно движения пальцев, середина — точка зума.
+        if (state.pinch && state.pinch.ids.every((id) => state.pointers.has(id))) {
+            const [first, second] = state.pinch.ids.map((id) => state.pointers.get(id));
+            const distance = pointerDistance(first, second);
+
+            if (distance > 0 && state.pinch.lastDistance > 0) {
+                const factor = distance / state.pinch.lastDistance;
+                zoomAt(
+                    (first.x + second.x) / 2,
+                    (first.y + second.y) / 2,
+                    state.session.view.zoom * factor);
+            }
+
+            state.pinch.lastDistance = distance;
+            event.preventDefault();
+            return;
+        }
+
         if (state.drag && state.drag.pointerId === event.pointerId) {
             const dx = (event.clientX - state.drag.startX) / layout.scale;
             const dy = (event.clientY - state.drag.startY) / layout.scale;
@@ -523,6 +591,13 @@
     });
 
     function endPointer(event) {
+        state.pointers.delete(event.pointerId);
+
+        if (state.pinch && state.pinch.ids.includes(event.pointerId)) {
+            state.pinch = null;
+            sendView.flush();
+        }
+
         if (state.drag && state.drag.pointerId === event.pointerId) {
             sendMove.flush();
             state.tokenNodes.get(state.drag.id)?.classList.remove('dragging');
@@ -543,6 +618,16 @@
 
     els.stage.addEventListener('pointerup', endPointer);
     els.stage.addEventListener('pointercancel', endPointer);
+
+    // Кнопки зума на планшете: не даём им запускать панораму сцены.
+    els.touchControls.addEventListener('pointerdown', (event) => event.stopPropagation());
+    els.touchControls.addEventListener('click', (event) => {
+        const button = event.target instanceof Element ? event.target.closest('button') : null;
+        if (!button || !state.session?.map) return;
+
+        const factor = button.id === 'touchZoomIn' ? 1.25 : 1 / 1.25;
+        zoomToCenter(state.session.view.zoom * factor);
+    });
 
     els.stage.addEventListener('wheel', (event) => {
         if (displayMode || !state.session?.map) return;
