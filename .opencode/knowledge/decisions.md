@@ -306,7 +306,9 @@ found in /data/user/0/ru.dndmap.host/files/.__override__/x86_64 ... Fast Deploym
 Решение: `EmbedAssembliesIntoApk=true` в `src/DnDMap.Android/DnDMap.Android.csproj` (Debug остаётся
 debug-подписанным, но становится самодостаточным) + шаг CI `Verify APK is self-contained`, который
 проверяет наличие managed-сборок в APK, чтобы регрессия ловилась до установки на планшет.
-Важно: с .NET 9 сборки лежат в `lib/<abi>/libassembly-store.so`, а не в `assemblies/` (в .NET 8 было
-`lib/<abi>/libassemblies.<abi>.blob.so`); первая версия проверки искала `assemblies/` и дала ложное
-падение.
+Формат упаковки оказался неочевидным: в .NET 10 Debug каждая сборка лежит как
+`lib/<abi>/lib_<Assembly>.dll.so` (а не в `assemblies/` и не в assembly store). Первая версия
+проверки искала `assemblies/`, вторая — assembly store; обе дали ложное падение, хотя APK был
+самодостаточным (42 МБ вместо 6 МБ fast-deployment). Итоговая проверка ищет
+`lib_DnDMap.Android.dll.so` и альтернативные форматы.
 Диагностика BlueStacks (`HD-Adb` 1.0.36, `error: closed`) описана в [troubleshooting.md](troubleshooting.md).

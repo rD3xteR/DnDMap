@@ -51,8 +51,9 @@ jobs:
 
       # Страховка от Fast Deployment: если managed-сборки не попали в APK,
       # установленное вручную приложение падает с "No assemblies found ... .__override__".
-      # Внимание: в .NET 9+ сборки лежат не в assemblies/, а в lib/<abi>/libassembly-store.so
-      # (в .NET 8 было lib/<abi>/libassemblies.<abi>.blob.so), поэтому проверяем оба варианта.
+      # Формат зависит от версии/конфигурации: в .NET 10 Debug с EmbedAssembliesIntoApk
+      # это lib/<abi>/lib_<Assembly>.dll.so, в других вариантах — assembly store
+      # (lib/<abi>/libassembly-store.so или libassemblies.<abi>.blob.so) либо assemblies/.
       - name: Verify APK is self-contained
         run: |
           set -euo pipefail
@@ -67,10 +68,11 @@ jobs:
           LIST="$RUNNER_TEMP/apk-entries.txt"
           unzip -l "$APK" > "$LIST"
           echo "entries: $(wc -l < "$LIST")"
-          head -n 30 "$LIST"
           echo "--- assembly entries ---"
-          grep -E "assemblies|assembly-store" "$LIST" || true
-          grep -Eq "assemblies/|lib/[^/]*/libassembly-store\.so|lib/[^/]*/libassemblies[^/]*\.so|assemblies\.blob" "$LIST" || {
+          grep -E "assemblies|assembly-store|/lib_[^/]*\.dll\.so" "$LIST" | head -n 20 || true
+          grep -Eq "lib/[^/]*/lib_DnDMap\.Android\.dll\.so|lib/[^/]*/libassembly-store\.so|lib/[^/]*/libassemblies[^/]*\.so|assemblies/|assemblies\.blob" "$LIST" || {
+            echo "--- lib/ entries (first 40) ---"
+            grep " lib/" "$LIST" | head -n 40 || true
             echo "::error::APK does not embed managed assemblies (fast deployment)"; exit 1; }
 
       - name: Upload APK

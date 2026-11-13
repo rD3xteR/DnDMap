@@ -110,7 +110,7 @@ dotnet build src/DnDMap.Android/DnDMap.Android.csproj -c Debug
 
 The installable APK is `src/DnDMap.Android/bin/Debug/net10.0-android/ru.dndmap.host-Signed.apk`. Install it with `adb install -r <apk>` or copy it to the tablet and open it (allow installation from unknown sources).
 
-> `EmbedAssembliesIntoApk` is set to `true` in the Android project on purpose. Without it a Debug build relies on *fast deployment*: managed assemblies stay on the build machine and are pushed over adb by `dotnet build -t:Run`, so an APK installed by hand aborts on start with `No assemblies found in .../files/.__override__/<abi>`. The CI workflow additionally verifies that the APK embeds its assemblies. Note that since .NET 9 they live in `lib/<abi>/libassembly-store.so` (in .NET 8 it was `lib/<abi>/libassemblies.<abi>.blob.so`), not in an `assemblies/` folder.
+> `EmbedAssembliesIntoApk` is set to `true` in the Android project on purpose. Without it a Debug build relies on *fast deployment*: managed assemblies stay on the build machine and are pushed over adb by `dotnet build -t:Run`, so an APK installed by hand aborts on start with `No assemblies found in .../files/.__override__/<abi>`. With the property set, a .NET 10 Debug APK carries each managed assembly as `lib/<abi>/lib_<Assembly>.dll.so` (other versions/Release may use `lib/<abi>/libassembly-store.so` or an `assemblies/` folder). The CI workflow verifies that `lib_DnDMap.Android.dll.so` is present in the APK.
 
 On launch the app shows a toast with the address for the DM, e.g. `http://192.168.1.42:5000/`. Open it in a browser on the laptop — the remote control page has file upload, map/token selection, zoom and token-size controls.
 

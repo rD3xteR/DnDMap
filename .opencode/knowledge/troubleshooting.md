@@ -234,9 +234,13 @@ F DEBUG   : Abort message: 'No assemblies found in
 поэтому ручная установка ломается (Release этим не страдает).
 Решение: `<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>` в `src/DnDMap.Android/DnDMap.Android.csproj`;
 workflow дополнительно проверяет, что managed-сборки вшиты в APK.
-Важно: с .NET 9+ сборки лежат в `lib/<abi>/libassembly-store.so` (в .NET 8 —
-`lib/<abi>/libassemblies.<abi>.blob.so`), а не в `assemblies/`. Проверка только на `assemblies/`
-даёт ложное падение; смотреть надо `unzip -l "$APK" | grep -E "assemblies|assembly-store"`.
+Важно: формат упаковки зависит от версии и конфигурации. В .NET 10 Debug с
+`EmbedAssembliesIntoApk=true` каждая managed-сборка лежит как `lib/<abi>/lib_<Assembly>.dll.so`
+(например, `lib/arm64-v8a/lib_DnDMap.Android.dll.so`); в других случаях встречается assembly store
+(`lib/<abi>/libassembly-store.so`, в .NET 8 — `libassemblies.<abi>.blob.so`) или папка `assemblies/`.
+Проверка только на `assemblies/` даёт ложное падение; смотреть надо
+`unzip -l "$APK" | grep -E "assemblies|assembly-store|/lib_[^/]*\.dll\.so"`.
+Ориентир: самодостаточный Debug-APK весит ~40 МБ, fast-deployment APK — ~6 МБ.
 Если снова такой вылет — проверять наличие assembly store в APK, а не искать баг в `MainActivity`.
 
 ### ⚠️ BlueStacks: `adb shell` рвётся с `error: closed`
