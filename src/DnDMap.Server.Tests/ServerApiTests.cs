@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using DnDMap.Core.Protocol;
+using DnDMap.Server;
 using Xunit;
 
 namespace DnDMap.Server.Tests;
@@ -55,6 +57,41 @@ public sealed class ServerApiTests
 
         var response = await server.Client.GetAsync("/nope");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Host_ReportsActualPortAndLanAddresses()
+    {
+        await using var server = new ServerFixture();
+
+        var response = await server.Client.GetAsync("/api/host");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var host = await response.Content.ReadFromJsonAsync<HostInfoDto>(ProtocolJson.Options);
+        Assert.NotNull(host);
+        Assert.Equal(server.Server.Port, host!.Port);
+        Assert.NotNull(host.Addresses);
+
+        foreach (var address in host.Addresses)
+        {
+            Assert.True(IPAddress.TryParse(address, out var parsed), address);
+            Assert.Equal(AddressFamily.InterNetwork, parsed!.AddressFamily);
+            Assert.False(IPAddress.IsLoopback(parsed));
+        }
+    }
+
+    [Fact]
+    public void HostAddresses_ExcludeLoopbackAndLinkLocal()
+    {
+        foreach (var address in HostAddresses.GetLanIPv4())
+        {
+            var parsed = IPAddress.Parse(address);
+            var bytes = parsed.GetAddressBytes();
+
+            Assert.Equal(AddressFamily.InterNetwork, parsed.AddressFamily);
+            Assert.False(IPAddress.IsLoopback(parsed));
+            Assert.False(bytes[0] == 169 && bytes[1] == 254, address);
+        }
     }
 
     [Fact]

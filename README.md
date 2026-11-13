@@ -112,7 +112,7 @@ The installable APK is `src/DnDMap.Android/bin/Debug/net10.0-android/ru.dndmap.h
 
 > `EmbedAssembliesIntoApk` is set to `true` in the Android project on purpose. Without it a Debug build relies on *fast deployment*: managed assemblies stay on the build machine and are pushed over adb by `dotnet build -t:Run`, so an APK installed by hand aborts on start with `No assemblies found in .../files/.__override__/<abi>`. With the property set, a .NET 10 Debug APK carries each managed assembly as `lib/<abi>/lib_<Assembly>.dll.so` (other versions/Release may use `lib/<abi>/libassembly-store.so` or an `assemblies/` folder). The CI workflow verifies that `lib_DnDMap.Android.dll.so` is present in the APK.
 
-On launch the app shows a toast with the address for the DM, e.g. `http://192.168.1.42:5000/`. Open it in a browser on the laptop — the remote control page has file upload, map/token selection, zoom and token-size controls.
+On launch the app shows a toast with the address for the DM, e.g. `http://192.168.1.42:5000/`. The waiting screen on the tablet also keeps showing this address (plus alternatives if the host has several network interfaces) until a map is opened; the data comes from `GET /api/host`. Open the address in a browser on the laptop — the remote control page has file upload, map/token selection, zoom and token-size controls.
 
 The GitHub Actions workflow `.github/workflows/android.yml` builds the APK on every push to any branch that touches the host projects (or via *workflow_dispatch*) and uploads `DnDMap-android-<run>` as an artifact. The debug build is signed with the runner's debug key, so it installs directly; release signing with your own keystore is a later step.
 

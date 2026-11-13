@@ -26,6 +26,8 @@
         mapImage: $('mapImage'),
         tokens: $('tokens'),
         empty: $('empty'),
+        emptyHint: $('emptyHint'),
+        emptyAddress: $('emptyAddress'),
         stage: $('stage'),
         note: $('note'),
         mapCount: $('mapCount'),
@@ -40,7 +42,8 @@
         pan: null,
         sliderActive: false,
         tokenNodes: new Map(),
-        manifest: null
+        manifest: null,
+        host: null
     };
 
     const MAX_UPLOAD_BYTES = 256 * 1024 * 1024;
@@ -201,6 +204,7 @@
         if (!session || !session.map || width <= 0 || height <= 0) {
             els.mapImage.style.display = 'none';
             els.empty.classList.remove('hidden');
+            renderEmpty();
             els.tokens.replaceChildren();
             state.tokenNodes.clear();
             state.layout = null;
@@ -265,6 +269,60 @@
             node.remove();
             state.tokenNodes.delete(id);
         }
+    }
+
+    // ---------- страница ожидания ----------
+
+    function renderEmpty() {
+        if (!displayMode) {
+            els.emptyHint.textContent = 'Загрузите карту и нажмите «Открыть карту»';
+            els.emptyAddress.classList.add('hidden');
+            return;
+        }
+
+        const host = state.host;
+        const addresses = host?.addresses ?? [];
+
+        els.emptyHint.textContent = addresses.length
+            ? 'Пульт мастера — откройте на ноутбуке:'
+            : 'Ожидание карты';
+
+        if (!addresses.length) {
+            els.emptyAddress.textContent = host
+                ? 'Не удалось определить IP-адрес. Подключите планшет к Wi-Fi и перезапустите приложение.'
+                : 'Определяем адрес…';
+            els.emptyAddress.classList.remove('hidden');
+            return;
+        }
+
+        const [primary, ...others] = addresses;
+        const lines = [document.createElement('div')];
+        lines[0].textContent = `http://${primary}:${host.port}/`;
+
+        if (others.length) {
+            const alt = document.createElement('small');
+            alt.textContent = 'если не открывается, попробуйте: ' +
+                others.map((address) => `http://${address}:${host.port}/`).join(' · ');
+            lines.push(alt);
+        }
+
+        const hint = document.createElement('small');
+        hint.textContent = 'затем загрузите карту и нажмите «Открыть карту»';
+        lines.push(hint);
+
+        els.emptyAddress.replaceChildren(...lines);
+        els.emptyAddress.classList.remove('hidden');
+    }
+
+    async function loadHostInfo() {
+        try {
+            state.host = await api('/api/host');
+        } catch (error) {
+            note(`адрес хоста: ${error.message}`);
+            state.host = { port: location.port || 80, addresses: [] };
+        }
+
+        renderEmpty();
     }
 
     function createTokenNode(id) {
@@ -771,6 +829,8 @@
         } catch (error) {
             setStatus(`ошибка: ${error.message}`, true);
         }
+
+        if (displayMode) await loadHostInfo();
 
         connect();
         await refreshManifest();

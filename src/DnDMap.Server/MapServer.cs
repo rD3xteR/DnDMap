@@ -247,6 +247,14 @@ public sealed class MapServer : IDisposable
             return;
         }
 
+        // Адреса для пульта мастера: страница ожидания на планшете показывает их крупным текстом.
+        if (segments is ["api", "host"] && request.Method == "GET")
+        {
+            await HttpProtocol.WriteJsonAsync(
+                stream, 200, new HostInfoDto(_port, HostAddresses.GetLanIPv4()), cancellationToken);
+            return;
+        }
+
         if (segments is ["api", "commands"] && request.Method == "POST")
         {
             await HandleCommandAsync(request, stream, cancellationToken);
@@ -286,7 +294,7 @@ public sealed class MapServer : IDisposable
             return;
         }
 
-        var known = segments is ["api", "session"] or ["api", "commands"] or ["api", "files"] or ["api", "viewport"]
+        var known = segments is ["api", "session"] or ["api", "host"] or ["api", "commands"] or ["api", "files"] or ["api", "viewport"]
                     || (segments.Count >= 3 && segments[0] is "api" or "files");
 
         await HttpProtocol.WriteErrorAsync(

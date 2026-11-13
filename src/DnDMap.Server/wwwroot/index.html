@@ -71,7 +71,12 @@
     <main id="stage">
         <img id="mapImage" alt="">
         <div id="tokens"></div>
-        <div id="empty" class="empty">Загрузите карту и нажмите «Открыть карту»</div>
+        <div id="empty" class="empty">
+            <div class="empty-inner">
+                <p id="emptyHint" class="empty-hint">Загрузите карту и нажмите «Открыть карту»</p>
+                <div id="emptyAddress" class="empty-address hidden"></div>
+            </div>
+        </div>
     </main>
 
     <script src="/app.js"></script>
