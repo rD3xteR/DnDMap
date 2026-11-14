@@ -27,7 +27,27 @@ public static class SessionMapper
                     token.Y,
                     token.Size,
                     token.EntitySize))
-                .ToArray());
+                .ToArray(),
+            snapshot.TabletInputLocked);
+    }
+
+    public static SketchDto ToSketchDto(SessionSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        return new SketchDto(snapshot.Sketch
+            .Select(stroke => new SketchStrokeDto(
+                stroke.Id,
+                stroke.Color,
+                stroke.WidthMapPx,
+                stroke.Points.Select(point => new PointDto(point.X, point.Y)).ToArray()))
+            .ToArray());
+    }
+
+    public static SketchDto ToSketchDto(MapSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return ToSketchDto(session.Snapshot());
     }
 
     public static SessionDto ToDto(MapSession session)

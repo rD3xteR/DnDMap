@@ -4,8 +4,7 @@ using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading.Channels;
 using DnDMap.Core.Imaging;
-using DnDMap.Core.Model;
-using DnDMap.Core.Protocol;
+using DnDMap.Core.Model;using DnDMap.Core.Protocol;
 using DnDMap.Core.Storage;
 using DnDMap.Server.Http;
 
@@ -26,7 +25,10 @@ public sealed class MapServer : IDisposable
     private readonly FileHashCache _hashes;
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _cts = new();
-    private readonly ConcurrentDictionary<Channel<string>, byte> _clients = new();
+    private readonly ConcurrentDictionary<Channel<SseMessage>, byte> _clients = new();
+
+    /// <summary>SSE-сообщение с именем события: состояние и наброски ходят раздельно.</summary>
+    private sealed record SseMessage(string Event, string Data);
 
     private readonly long _maxUploadBytes;
     private Task? _acceptTask;
@@ -163,11 +165,23 @@ public sealed class MapServer : IDisposable
         if (_clients.IsEmpty)
             return;
 
-        string json;
+        List<SseMessage> messages;
 
         try
         {
-            json = JsonSerializer.Serialize(SessionMapper.ToDto(_session), ProtocolJson.Options);
+            if (change.Kind == SessionChangeKind.Sketch)
+            {
+                // Наброски шлём отдельным событием: они большие и меняются редко.
+                messages = [new SseMessage("sketch", SerializeSketch())];
+            }
+            else
+            {
+                messages = [new SseMessage("state", SerializeState())];
+
+                // Смена карты очищает наброски — клиенту нужно знать об этом.
+                if (change.Kind == SessionChangeKind.Map)
+                    messages.Add(new SseMessage("sketch", SerializeSketch()));
+            }
         }
         catch (Exception ex)
         {
@@ -176,14 +190,23 @@ public sealed class MapServer : IDisposable
         }
 
         foreach (var client in _clients.Keys)
-            client.Writer.TryWrite(json);
+        {
+            foreach (var message in messages)
+                client.Writer.TryWrite(message);
+        }
     }
+
+    private string SerializeState() =>
+        JsonSerializer.Serialize(SessionMapper.ToDto(_session), ProtocolJson.Options);
+
+    private string SerializeSketch() =>
+        JsonSerializer.Serialize(SessionMapper.ToSketchDto(_session), ProtocolJson.Options);
 
     private async Task HandleEventsAsync(Stream stream, CancellationToken cancellationToken)
     {
         await HttpProtocol.WriteSseHeadersAsync(stream, cancellationToken);
 
-        var queue = Channel.CreateBounded<string>(new BoundedChannelOptions(SseQueueLength)
+        var queue = Channel.CreateBounded<SseMessage>(new BoundedChannelOptions(SseQueueLength)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true
@@ -193,8 +216,9 @@ public sealed class MapServer : IDisposable
 
         try
         {
-            var initial = JsonSerializer.Serialize(SessionMapper.ToDto(_session), ProtocolJson.Options);
-            await HttpProtocol.WriteSseEventAsync(stream, "state", initial, cancellationToken);
+            // Новый клиент сразу получает состояние и наброски — двумя событиями.
+            await HttpProtocol.WriteSseEventAsync(stream, "state", SerializeState(), cancellationToken);
+            await HttpProtocol.WriteSseEventAsync(stream, "sketch", SerializeSketch(), cancellationToken);
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -211,8 +235,11 @@ public sealed class MapServer : IDisposable
                 if (!await waitRead)
                     break;
 
-                while (queue.Reader.TryRead(out var data))
-                    await HttpProtocol.WriteSseEventAsync(stream, "state", data, cancellationToken);
+                while (queue.Reader.TryRead(out var message))
+                {
+                    await HttpProtocol.WriteSseEventAsync(
+                        stream, message.Event, message.Data, cancellationToken);
+                }
             }
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException
@@ -255,6 +282,20 @@ public sealed class MapServer : IDisposable
             return;
         }
 
+        // Наброски — отдельным запросом: SSE шлёт их только при изменении.
+        if (segments is ["api", "sketch"] && request.Method == "GET")
+        {
+            await HttpProtocol.WriteJsonAsync(
+                stream, 200, SessionMapper.ToSketchDto(_session), cancellationToken);
+            return;
+        }
+
+        if (segments is ["api", "maps", "blank"] && request.Method == "POST")
+        {
+            await HandleBlankMapAsync(request, stream, cancellationToken);
+            return;
+        }
+
         if (segments is ["api", "commands"] && request.Method == "POST")
         {
             await HandleCommandAsync(request, stream, cancellationToken);
@@ -294,7 +335,8 @@ public sealed class MapServer : IDisposable
             return;
         }
 
-        var known = segments is ["api", "session"] or ["api", "host"] or ["api", "commands"] or ["api", "files"] or ["api", "viewport"]
+        var known = segments is ["api", "session"] or ["api", "host"] or ["api", "commands"] or ["api", "files"]
+                        or ["api", "viewport"] or ["api", "sketch"] or ["api", "maps", "blank"]
                     || (segments.Count >= 3 && segments[0] is "api" or "files");
 
         await HttpProtocol.WriteErrorAsync(
@@ -418,6 +460,63 @@ public sealed class MapServer : IDisposable
 
         await HttpProtocol.WriteJsonAsync(
             stream, 200, new CommandResultDto(changed, _session.Revision), cancellationToken);
+    }
+
+    private async Task HandleBlankMapAsync(HttpRequest request, Stream stream, CancellationToken cancellationToken)
+    {
+        if (request.ContentLength <= 0)
+        {
+            await HttpProtocol.WriteErrorAsync(stream, 400, "Пустой запрос карты.", cancellationToken);
+            return;
+        }
+
+        if (request.ContentLength > MaxJsonBytes)
+        {
+            await HttpProtocol.WriteErrorAsync(stream, 413, "Запрос карты слишком большой.", cancellationToken);
+            return;
+        }
+
+        BlankMapRequest? blank;
+
+        try
+        {
+            blank = await JsonSerializer.DeserializeAsync<BlankMapRequest>(
+                request.Body, ProtocolJson.Options, cancellationToken);
+        }
+        catch (JsonException ex)
+        {
+            await HttpProtocol.WriteErrorAsync(stream, 400, $"Некорректный JSON: {ex.Message}", cancellationToken);
+            return;
+        }
+
+        if (blank is null
+            || blank.Columns < GridMapRenderer.MinColumns || blank.Columns > GridMapRenderer.MaxColumns
+            || blank.Rows < GridMapRenderer.MinRows || blank.Rows > GridMapRenderer.MaxRows)
+        {
+            await HttpProtocol.WriteErrorAsync(
+                stream,
+                400,
+                $"Клеток по ширине: {GridMapRenderer.MinColumns}..{GridMapRenderer.MaxColumns}, " +
+                $"по высоте: {GridMapRenderer.MinRows}..{GridMapRenderer.MaxRows}.",
+                cancellationToken);
+            return;
+        }
+
+        var name = $"Пустая {blank.Columns}x{blank.Rows}.png";
+        var (width, height) = GridMapRenderer.SizeOf(blank.Columns, blank.Rows);
+        var png = GridMapRenderer.Render(blank.Columns, blank.Rows);
+
+        using (var content = new MemoryStream(png))
+            _store.Write(FileKind.Map, name, content);
+
+        _hashes.Invalidate(FileKind.Map, name);
+        _session.Apply(new SetMapCommand(name, width, height));
+
+        await HttpProtocol.WriteJsonAsync(
+            stream,
+            200,
+            new BlankMapDto(name, blank.Columns, blank.Rows, width, height, _session.Revision),
+            cancellationToken);
     }
 
     private async Task HandleManifestAsync(HttpRequest request, Stream stream, CancellationToken cancellationToken)

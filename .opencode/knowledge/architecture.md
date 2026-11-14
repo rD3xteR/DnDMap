@@ -1,6 +1,6 @@
 # Архитектура DnDMap
 
-Обновлено: 2026-11-12 (M3: Android-хост; M2: HTTP-сервер и веб-пульт). Код ссылается на файлы в рабочей копии.
+Обновлено: 2026-11-14 (блокировка планшета, пустая карта-сетка, наброски). Код ссылается на файлы в рабочей копии.
 
 ## Общая схема
 
@@ -38,6 +38,7 @@ MainActivity (src/DnDMap.Android)
    └── WebView → http://127.0.0.1:<port>/?display=1
          └── SPA без шапки/панели; по ResizeObserver шлёт POST /api/viewport
                + touch-управление: pinch, кнопки «−/+», drag токенов, панорама
+               + canvas набросков поверх карты; замок планшета скрывает кнопки зума
 ```
 
 `/api/viewport` задаёт `MapSession` живой CSS-размер экрана стола. Адрес пульта: `GET /api/host`
@@ -45,6 +46,10 @@ MainActivity (src/DnDMap.Android)
 интернета и виртуальных адаптеров). Страница ожидания в `?display=1` показывает первый адрес крупно,
 остальные — мелкой строкой; Toast дублирует адрес. Пульт мастера открывается с ноутбука по этому
 адресу и управляет той же сессией.
+
+Пустая карта-сетка генерируется сервером (`GridMapRenderer`, свой PNG-энкодер) и кладётся в кэш
+как обычный файл, поэтому WPF и веб видят её одинаково. Наброски — отдельный слой сессии
+(`SketchStroke` в px карты), ходят отдельным SSE-событием `sketch`; планшет только отображает canvas.
 
 ## Точки входа
 
@@ -75,9 +80,12 @@ MainActivity (src/DnDMap.Android)
 5. **Смена размера токенов** — слайдер «Диаметр» → `SettingsViewModel.DiameterToChange` → `MapViewModel.SetDiameter`
    (px эталонного экрана 1920×1080) → `SetDiameterCommand` → `MapToken.Size` в px карты.
 6. **Веб-пульт** — браузер шлёт `POST /api/commands`, сервер применяет команду к своей `MapSession`,
-   `Changed` → SSE-событие `state` с полным `SessionDto` (токены в px карты, `visibleRect`).
+   `Changed` → SSE-событие `state` с полным `SessionDto` (токены в px карты, `visibleRect`) или
+   `sketch` с `SketchDto` (изменения набросков). Пустая карта — `POST /api/maps/blank`, сервер
+   рисует PNG и применяет `SetMapCommand`.
    Экран стола в режиме `?display=1` шлёт `POST /api/viewport` со своим CSS-размером (при старте и resize),
-   чтобы fit/видимая область соответствовали планшету.
+   чтобы fit/видимая область соответствовали планшету. Замок планшета (`setTabletLock`) приходит
+   в `SessionDto.tabletInputLocked` и блокирует pointer-ввод на экране стола.
    Файлы: браузер загружает `PUT /api/files/{kind}/{name}` (сырое тело), читает манифест
    `GET /api/files?kind=…` и досылает недостающее из IndexedDB; картинки — `GET /files/{kind}/{name}`.
 7. **Запуск сервера** — `SettingsViewModel.StartServer`: очистка кэша → `MapServer.Start()` → URL
@@ -123,11 +131,11 @@ MainActivity (src/DnDMap.Android)
 
 | Проект | TFM | Назначение | Состояние |
 | --- | --- | --- | --- |
-| `src/DnDMap.Core` | net10.0 | геометрия кадра, модель сессии, DTO, хранилище, размеры изображений | готово, покрыто тестами |
+| `src/DnDMap.Core` | net10.0 | геометрия кадра, модель сессии, DTO, хранилище, размеры изображений, PNG-сетка | готово, покрыто тестами |
 | `src/DnDMap.Server` | net10.0 | HTTP-сервер на BCL (`TcpListener`), SSE, SPA в ресурсах | готово (M2), покрыто тестами |
 | `src/DnDMap.Android` | net10.0-android | экран стола + хостинг сервера | готово (M3), локально не собиралось без SDK/JDK 17 |
-| `src/DnDMap.Core.Tests` | net10.0 | xUnit-тесты ядра | 82 теста, все зелёные |
-| `src/DnDMap.Server.Tests` | net10.0 | xUnit-тесты API/SSE/загрузки на живом сервере | 17 тестов, все зелёные |
+| `src/DnDMap.Core.Tests` | net10.0 | xUnit-тесты ядра | 92 теста, все зелёные |
+| `src/DnDMap.Server.Tests` | net10.0 | xUnit-тесты API/SSE/загрузки на живом сервере | 26 тестов, все зелёные |
 
 Поток данных после M2:
 
@@ -135,11 +143,13 @@ MainActivity (src/DnDMap.Android)
 MapSession (Core)  ←  Command (WPF-мост и POST /api/commands)
       │ Changed(SessionChange)
       ├── WPF-мост: Snapshot() → экранные координаты (MapLeft/MapTop, TokenViewModel)
-      └── SSE-рассылка: все браузеры получают полный SessionDto (visibleRect + токены)
+      ├── SSE state: все браузеры получают полный SessionDto (visibleRect + токены + замок)
+      └── SSE sketch: SketchDto (только при изменении набросков или смене карты)
 ```
 
 Ключевые типы: `MapSession` (`Model/MapSession.cs`), `ViewGeometry` (`Geometry/ViewGeometry.cs`),
-`SessionSnapshot`, `Command`/`SessionDto` (`Protocol/`), `MapServer` (`src/DnDMap.Server/MapServer.cs`).
+`SessionSnapshot`, `Command`/`SessionDto`/`SketchDto` (`Protocol/`), `GridMapRenderer` (`Imaging/`),
+`MapServer` (`src/DnDMap.Server/MapServer.cs`).
 Подробности — [topics/core-and-web.md](topics/core-and-web.md).
 
 ## Файлы карт и токенов (уточнено 2026-11-10)

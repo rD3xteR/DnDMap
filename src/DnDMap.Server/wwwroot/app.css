@@ -197,6 +197,10 @@ select {
     cursor: move;
 }
 
+#stage.locked {
+    cursor: default;
+}
+
 #bar, .panel {
     position: relative;
     z-index: 3;
@@ -329,4 +333,90 @@ body.display .touch-controls:not(.hidden) {
 
 .touch-controls button:active {
     background: rgba(201, 162, 39, .35);
+}
+
+/* Наброски: прозрачный слой над картой, ниже токенов. */
+.sketch {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#stage.drawing {
+    cursor: crosshair;
+}
+
+.check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.check input {
+    accent-color: var(--accent);
+}
+
+.draw {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn.active {
+    border-color: var(--accent);
+    background: rgba(201, 162, 39, .28);
+    color: var(--text);
+}
+
+.blank-map {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    border: 2px dashed #3a4452;
+    border-radius: 10px;
+    background: var(--panel-2);
+}
+
+.blank-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.blank-row input {
+    width: 64px;
+    padding: 4px 6px;
+    border: 1px solid #333c48;
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+}
+
+.lock-badge {
+    position: absolute;
+    top: 18px;
+    right: 24px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(11, 13, 16, .7);
+    border: 1px solid #333c48;
+    color: var(--muted);
+    font-size: 14px;
+    z-index: 11;
+    pointer-events: none;
+}
+
+.lock-badge.hidden {
+    display: none;
 }

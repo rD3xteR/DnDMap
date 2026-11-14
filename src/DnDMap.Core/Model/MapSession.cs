@@ -10,15 +10,23 @@ namespace DnDMap.Core.Model;
 /// </summary>
 public sealed class MapSession
 {
+    /// <summary>Ограничения набросков: сессия целиком уходит клиентам по сети.</summary>
+    private const int MaxSketchStrokes = 200;
+    private const int MaxSketchPointsPerStroke = 300;
+    private const int MaxSketchTotalPoints = 20000;
+    private const double MaxSketchWidthMapPx = 200;
+
     private readonly object _gate = new();
     private readonly SessionOptions _options;
     private readonly List<MapToken> _tokens = [];
+    private readonly List<SketchStroke> _sketch = [];
 
     private MapInfo? _map;
     private ViewState _view = new(MapPoint.Zero, ViewGeometry.MinZoom);
     private double _viewportWidth;
     private double _viewportHeight;
     private double _baseDiameterMapPx;
+    private bool _tabletInputLocked;
     private long _revision;
 
     public MapSession(SessionOptions? options = null)
@@ -68,6 +76,18 @@ public sealed class MapSession
         get { lock (_gate) return _tokens.ToArray(); }
     }
 
+    /// <summary>Планшету запрещено менять карту и токены (панорама, зум, перетаскивание).</summary>
+    public bool TabletInputLocked
+    {
+        get { lock (_gate) return _tabletInputLocked; }
+    }
+
+    /// <summary>Наброски поверх текущей карты; очищаются при смене карты.</summary>
+    public IReadOnlyList<SketchStroke> Sketch
+    {
+        get { lock (_gate) return _sketch.ToArray(); }
+    }
+
     public ViewContext Context
     {
         get { lock (_gate) return ContextLocked(); }
@@ -101,7 +121,9 @@ public sealed class MapSession
                 _viewportHeight,
                 _baseDiameterMapPx,
                 MapPxToReferencePxLocked(_baseDiameterMapPx),
-                _tokens.ToArray());
+                _tokens.ToArray(),
+                _tabletInputLocked,
+                _sketch.ToArray());
         }
     }
 
@@ -217,6 +239,19 @@ public sealed class MapSession
             case ResetViewCommand:
                 return ApplyResetViewLocked();
 
+            case AddSketchStrokeCommand addStroke:
+                return ApplyAddSketchStrokeLocked(addStroke);
+
+            case UndoSketchCommand:
+                return ApplyUndoSketchLocked();
+
+            case ClearSketchCommand:
+                return ApplyClearSketchLocked();
+
+            case SetTabletInputLockCommand setLock:
+                _tabletInputLocked = setLock.Locked;
+                return true;
+
             default:
                 return false;
         }
@@ -230,6 +265,9 @@ public sealed class MapSession
         _map = new MapInfo(command.Name, command.Width, command.Height);
         _view = ViewGeometry.Reset(command.Width, command.Height);
         _baseDiameterMapPx = ReferencePxToMapPxLocked(_options.DefaultDiameterReferencePx);
+
+        // Наброски относятся к конкретной карте: на новой карте они бессмысленны.
+        _sketch.Clear();
 
         // Диаметр пересчитывается под новую карту, а позиции прижимаются к её границам,
         // чтобы при переходе на карту меньшего размера токены не оказались «за картой».
@@ -308,6 +346,71 @@ public sealed class MapSession
         return true;
     }
 
+    private bool ApplyAddSketchStrokeLocked(AddSketchStrokeCommand command)
+    {
+        if (_map is null || command.Points is null || command.Points.Count == 0)
+            return false;
+
+        var color = command.Color?.Trim();
+        if (string.IsNullOrEmpty(color) ||
+            (color != SketchStroke.EraserColor && !IsHexColor(color)))
+            return false;
+
+        var width = Math.Clamp(command.WidthMapPx, 1, MaxSketchWidthMapPx);
+        var points = new List<MapPoint>(Math.Min(command.Points.Count, MaxSketchPointsPerStroke));
+
+        foreach (var point in command.Points.Take(MaxSketchPointsPerStroke))
+        {
+            if (!double.IsFinite(point.X) || !double.IsFinite(point.Y))
+                continue;
+
+            // Точки не выходят за карту: клиент не может «нарисовать» в пустоте.
+            points.Add(new MapPoint(
+                Math.Clamp(point.X, 0, _map.Width),
+                Math.Clamp(point.Y, 0, _map.Height)));
+        }
+
+        if (points.Count == 0)
+            return false;
+
+        TrimSketchLocked();
+        _sketch.Add(new SketchStroke(Guid.NewGuid().ToString("N"), color, width, points));
+        return true;
+    }
+
+    private bool ApplyUndoSketchLocked()
+    {
+        if (_sketch.Count == 0)
+            return false;
+
+        _sketch.RemoveAt(_sketch.Count - 1);
+        return true;
+    }
+
+    private bool ApplyClearSketchLocked()
+    {
+        if (_sketch.Count == 0)
+            return false;
+
+        _sketch.Clear();
+        return true;
+    }
+
+    /// <summary>Держит наброски в разумных размерах: старые штрихи уходят первыми.</summary>
+    private void TrimSketchLocked()
+    {
+        while (_sketch.Count > 0 &&
+               (_sketch.Count >= MaxSketchStrokes || TotalSketchPointsLocked() > MaxSketchTotalPoints))
+        {
+            _sketch.RemoveAt(0);
+        }
+    }
+
+    private int TotalSketchPointsLocked() => _sketch.Sum(stroke => stroke.Points.Count);
+
+    private static bool IsHexColor(string color) =>
+        color.Length == 7 && color[0] == '#' && color.Skip(1).All(Uri.IsHexDigit);
+
     private MapToken? FindTokenLocked(string tokenId) =>
         _tokens.FirstOrDefault(t => string.Equals(t.Id, tokenId, StringComparison.Ordinal));
 
@@ -344,6 +447,8 @@ public sealed class MapSession
         AddTokenCommand or RemoveTokenCommand or MoveTokenCommand => SessionChangeKind.Tokens,
         SetDiameterCommand => SessionChangeKind.Diameter,
         SetViewCommand or ResetViewCommand => SessionChangeKind.View,
+        AddSketchStrokeCommand or UndoSketchCommand or ClearSketchCommand => SessionChangeKind.Sketch,
+        SetTabletInputLockCommand => SessionChangeKind.InputLock,
         _ => SessionChangeKind.View
     };
 }

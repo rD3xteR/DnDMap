@@ -14,7 +14,9 @@ public sealed record SessionSnapshot(
     double ViewportHeight,
     double BaseDiameterMapPx,
     double BaseDiameterReferencePx,
-    IReadOnlyList<MapToken> Tokens)
+    IReadOnlyList<MapToken> Tokens,
+    bool TabletInputLocked,
+    IReadOnlyList<SketchStroke> Sketch)
 {
     public ViewContext Context => new(Map?.Width ?? 0, Map?.Height ?? 0, ViewportWidth, ViewportHeight);
 

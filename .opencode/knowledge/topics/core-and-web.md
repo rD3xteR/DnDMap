@@ -1,6 +1,6 @@
 # Тема: ядро и веб-хост
 
-Обновлено: 2026-11-12. Статус: M0–M3 завершены (ядро, WPF, HTTP-сервер и веб-пульт, Android-хост); M4 — workflow APK готов, сборка ждёт Android-тулчейн/CI.
+Обновлено: 2026-11-14. Статус: M0–M3 завершены (ядро, WPF, HTTP-сервер и веб-пульт, Android-хост); M4 — workflow APK готов, сборка ждёт Android-тулчейн/CI. Добавлены блокировка планшета, пустая карта-сетка и наброски.
 
 ## Зачем это
 
@@ -86,9 +86,17 @@ JSON-дискриминатор `type` (`JsonPolymorphic`), обязательн
 | `setDiameter` | `referencePx` | базовый диаметр в px эталона, клампится в 20–200 |
 | `setView` | `centerX`, `centerY`, `zoom` | задать кадр, зум клампится в 1..3 |
 | `resetView` | — | 1×, по центру |
+| `addSketchStroke` | `color`, `widthMapPx`, `points[]` | штрих наброска в px карты; цвет `#rrggbb` или `"eraser"` |
+| `undoSketch` | — | убрать последний штрих (409, если пусто) |
+| `clearSketch` | — | очистить все наброски (409, если пусто) |
+| `setTabletLock` | `locked` | запретить ввод с планшета (панорама, зум, токены) |
 
-`SessionChangeKind` (`Map`, `Tokens`, `View`, `Diameter`, `Viewport`) — чтобы сервер не гонял полное состояние
+`SessionChangeKind` (`Map`, `Tokens`, `View`, `Diameter`, `Viewport`, `Sketch`, `InputLock`) — чтобы сервер не гонял полное состояние
 на каждую мелочь, а клиент понимал, что перерисовать.
+
+Лимиты набросков в `MapSession`: 200 штрихов, 300 точек на штрих, 20 000 точек суммарно,
+толщина клампится в 1..200 px карты, точки — в границы карты. При смене карты наброски очищаются.
+Сериализуются отдельным `SketchDto` (не входят в `SessionDto`: они большие и меняются редко).
 
 ## Хранилище
 
@@ -135,7 +143,9 @@ JSON-дискриминатор `type` (`JsonPolymorphic`), обязательн
 | `GET /api/session` | полный `SessionDto` |
 | `POST /api/commands` | `Command` JSON → `{accepted,revision}`; 409, если команда отклонена |
 | `POST /api/viewport` | `{width,height}` → `MapSession.SetViewport`; обновляет fit и `visibleRect` |
-| `GET /api/events` | SSE, событие `state` с полным `SessionDto`; ping-комментарий каждые 15 с |
+| `POST /api/maps/blank` | `{columns,rows}` → рисует PNG-сетку, кладёт в `maps/`, открывает как карту; 400 вне 10–30 × 5–20 |
+| `GET /api/sketch` | `SketchDto` — все штрихи текущей карты |
+| `GET /api/events` | SSE: `state` с полным `SessionDto` и отдельное событие `sketch` с `SketchDto`; ping каждые 15 с |
 | `GET /api/files?kind=map\|token` | `{files:[{name,size,hash}]}`, SHA-256 из `FileHashCache` |
 | `PUT /api/files/{kind}/{name}` | сырое тело (без multipart), 413 при превышении лимита, 415 для не-PNG/JPEG |
 | `DELETE /api/files/{kind}/{name}` | 204 / 404, инвалидирует хэш |
@@ -151,7 +161,8 @@ JSON-дискриминатор `type` (`JsonPolymorphic`), обязательн
 
 SPA (`wwwroot/app.js`):
 
-- подписка `EventSource('/api/events')`, начальный `GET /api/session`;
+- подписка `EventSource('/api/events')`: событие `state` → `applyState`, событие `sketch` → `state.sketch` + перерисовка canvas;
+  на старте параллельно `GET /api/session` и `GET /api/sketch`;
 - рендер как в WPF — экранные координаты из `visibleRect` (в него входит зум: `fit × zoom`), без `RenderTransform`;
 - драг токена и панорама — pointer events с оптимистичным обновлением и throttle (30/40 мс);
   оба ограничиваются локально (`ClampAxis` в `app.js`) и повторно в ядре;
@@ -159,8 +170,14 @@ SPA (`wwwroot/app.js`):
 - слайдер «Токены» 20–200 ref-px → `setDiameter` (throttle 60 мс), подпись синхронизируется из `baseDiameter`;
 - файлы: две drop-зоны + `<input type=file multiple>`, IndexedDB хранит `{kind,name,size,blob}`,
   при старте сравнивает с манифестом и досылает недостающее (сейчас по имени+размеру);
-- `?display=1` — экран стола на планшете: шапка и панель скрыты, ввод отключён, сцена сама
-  сообщает размер через `POST /api/viewport` (при старте, `resize`, `orientationchange` и `ResizeObserver`).
+- «Пустая карта»: числа клеток (клампятся в UI) → `POST /api/maps/blank`, затем `refreshManifest` и выбор имени в списке;
+- наброски: canvas поверх `<img>`, ниже токенов. Штрих в px карты, координаты через `layout` (`offsetX/Y`, `scale`);
+  ластик — `globalCompositeOperation = 'destination-out'`, поэтому карта не портится. Штрих добавляется в `state.sketch`
+  оптимистично и заменяется серверным `sketch` по SSE;
+- чекбокс «планшет: только показ» → `setTabletLock`; на планшете состояние приходит в `SessionDto.tabletInputLocked`,
+  показывает бейдж `#lockBadge` и прячет кнопки зума; `pointerdown` при замке игнорируется;
+- `?display=1` — экран стола на планшете: шапка и панель скрыты, ввод отключён (кроме разрешённых жестов),
+  сцена сама сообщает размер через `POST /api/viewport` (при старте, `resize`, `orientationchange` и `ResizeObserver`).
 
 Исправления 2026-11-12: `visibleRect` без множителя `zoom` (из-за него зум «не работал» в браузере),
 кламп панорамы/драга на клиенте + кламп токена в ядре, слайдер размера токенов. Подробности — [decisions.md](../decisions.md).
@@ -175,7 +192,7 @@ SPA (`wwwroot/app.js`):
 
 **M2 — сервер (завершён 2026-11-11).** `TcpListener`, маршруты из таблицы «Сервер M2», SSE с полным
 `SessionDto`, статика из ресурсов, кэш `%LOCALAPPDATA%\DnDMap\session-cache` (очистка при старте и выходе),
-запуск из окна «Управление». Проверено 15 тестами API + живым прогоном SPA (ядро — 82 теста).
+запуск из окна «Управление». Проверено 26 тестами API + живым прогоном SPA (ядро — 92 теста).
 Подробности — [decisions.md](../decisions.md).
 
 Не сделано (долг M2): серверная сессия не связана с сессией WPF-окна карты; аутентификации нет

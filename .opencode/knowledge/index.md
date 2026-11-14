@@ -3,7 +3,7 @@
 Проект: приложение для показа карт Dungeons & Dragons на экране с токенами существ и персонажей.
 Сейчас это WPF-десктоп; идёт переезд на схему «ядро + веб-сервер + Android-хост» (self-host в локальной сети).
 Репозиторий: https://github.com/rD3xteR/DnDMap
-Последнее обновление: 2026-11-12
+Последнее обновление: 2026-11-14
 
 | Файл | Содержание |
 | --- | --- |
@@ -32,7 +32,7 @@
 
 ## Что сейчас в рабочей копии
 
-Проверено 2026-11-12:
+Проверено 2026-11-14:
 
 - **Закоммичено** `a286db0` `feat: add shared core, session model and core tests (#15)` — ядро, каркас сервера, 75 тестов.
 - **Закоммичено** `863e9b3` `feat: run WPF app on shared core, drop touch input (#15)` — M1: WPF на ядре,
@@ -46,5 +46,15 @@
   Первый же прогон CI (`Android APK` #1, run 43171726784) — **success**: артефакт `DnDMap-android-1`
   (~6.1 МБ, `ru.dndmap.host-Signed.apk`). Тесты: ядро 82, сервер 17.
   Локальная сборка APK по-прежнему не проверена (нет JDK 17/Android SDK) — APK берётся из CI.
+- **Закоммичено** `6ab4a03` `feat(android): tablet zoom/token drag, app icon, stable signing key (#15)` — зум/токены
+  на планшете, иконка, постоянная подпись из секретов, README и база знаний. CI run #6 упал на
+  `Decode signing keystore`, пока в GitHub не добавлены 4 секрета.
+- **Не закоммичено (2026-11-14):** замок планшета, пустая карта-сетка и наброски.
+  Ядро: `SketchStroke`, `GridMapRenderer`, команды `addSketchStroke`/`undoSketch`/`clearSketch`/`setTabletLock`,
+  `SketchDto`, `SessionDto.TabletInputLocked`. Сервер: `POST /api/maps/blank`, `GET /api/sketch`,
+  SSE-событие `sketch`. SPA: чекбокс «планшет: только показ», панель рисования, canvas, секция «Пустая карта».
+  Тесты: ядро 92/92, сервер 26/26. Живой прогон в Chromium — все сценарии зелёные.
+  Подробности — в [decisions.md](decisions.md) (запись 2026-11-14).
+- Issue **#16** «Конструктор кастомных карт: сетка, фон, сохранение» — https://github.com/rD3xteR/DnDMap/issues/16
 - Ранее не закоммичено: персистентность путей (`Paths.settings`, `Paths.Designer.cs`, `App.config`).
 - Подробности — в [decisions.md](decisions.md), [architecture.md](architecture.md) и [troubleshooting.md](troubleshooting.md).

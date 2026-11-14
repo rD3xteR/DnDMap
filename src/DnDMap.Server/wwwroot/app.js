@@ -34,7 +34,19 @@
         stage: $('stage'),
         note: $('note'),
         mapCount: $('mapCount'),
-        tokenCount: $('tokenCount')
+        tokenCount: $('tokenCount'),
+        tabletLock: $('tabletLock'),
+        lockBadge: $('lockBadge'),
+        sketch: $('sketch'),
+        drawToggle: $('drawToggle'),
+        drawColor: $('drawColor'),
+        drawWidth: $('drawWidth'),
+        drawErase: $('drawErase'),
+        drawUndo: $('drawUndo'),
+        drawClear: $('drawClear'),
+        blankCols: $('blankCols'),
+        blankRows: $('blankRows'),
+        createBlank: $('createBlank')
     };
 
     const state = {
@@ -48,7 +60,11 @@
         manifest: null,
         host: null,
         pointers: new Map(),
-        pinch: null
+        pinch: null,
+        sketch: { strokes: [] },
+        drawing: false,
+        erase: false,
+        stroke: null
     };
 
     const MAX_UPLOAD_BYTES = 256 * 1024 * 1024;
@@ -195,6 +211,7 @@
         }
 
         state.session = incoming;
+        els.tabletLock.checked = Boolean(incoming.tabletInputLocked);
         render();
         syncZoom();
         syncDiameter();
@@ -210,17 +227,24 @@
             els.mapImage.style.display = 'none';
             els.empty.classList.remove('hidden');
             els.touchControls.classList.add('hidden');
+            els.lockBadge.classList.add('hidden');
+            els.stage.classList.remove('locked');
             renderEmpty();
             els.tokens.replaceChildren();
             state.tokenNodes.clear();
             state.layout = null;
+            renderSketch();
             return;
         }
 
         const rect = session.visibleRect;
         if (!rect || rect.width <= 0 || rect.height <= 0) return;
 
-        els.touchControls.classList.remove('hidden');
+        // Блокировка действует только на экране стола: пульт мастера работает всегда.
+        const locked = displayMode && Boolean(session.tabletInputLocked);
+        els.touchControls.classList.toggle('hidden', locked);
+        els.lockBadge.classList.toggle('hidden', !locked);
+        els.stage.classList.toggle('locked', locked);
 
         const scale = Math.min(width / rect.width, height / rect.height);
         const offsetX = (width - rect.width * scale) / 2;
@@ -277,6 +301,147 @@
             node.remove();
             state.tokenNodes.delete(id);
         }
+
+        renderSketch();
+    }
+
+    // ---------- наброски ----------
+
+    const SKETCH_DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    function renderSketch() {
+        const canvas = els.sketch;
+        const width = els.stage.clientWidth;
+        const height = els.stage.clientHeight;
+
+        const pixelWidth = Math.max(1, Math.round(width * SKETCH_DPR));
+        const pixelHeight = Math.max(1, Math.round(height * SKETCH_DPR));
+
+        if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+            canvas.width = pixelWidth;
+            canvas.height = pixelHeight;
+        }
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const layout = state.layout;
+        if (!state.session?.map || !layout || width <= 0 || height <= 0) return;
+
+        ctx.setTransform(SKETCH_DPR, 0, 0, SKETCH_DPR, 0, 0);
+
+        for (const stroke of state.sketch.strokes) drawStroke(ctx, stroke, layout);
+        if (state.stroke) drawStroke(ctx, state.stroke, layout);
+    }
+
+    function drawStroke(ctx, stroke, layout) {
+        const points = stroke.points ?? [];
+        if (points.length === 0) return;
+
+        const rect = state.session.visibleRect;
+        const screenX = (x) => layout.offsetX + (x - rect.x) * layout.scale;
+        const screenY = (y) => layout.offsetY + (y - rect.y) * layout.scale;
+
+        // Ластик не рисует: он вырезает уже нарисованное, карта остаётся нетронутой.
+        const eraser = stroke.color === 'eraser';
+
+        ctx.save();
+        ctx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
+        ctx.strokeStyle = eraser ? '#000000' : stroke.color;
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.lineWidth = Math.max(1, stroke.widthMapPx * layout.scale);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const first = points[0];
+
+        if (points.length === 1) {
+            ctx.beginPath();
+            ctx.arc(screenX(first.x), screenY(first.y), ctx.lineWidth / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            return;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(screenX(first.x), screenY(first.y));
+
+        for (let index = 1; index < points.length; index++) {
+            const point = points[index];
+            ctx.lineTo(screenX(point.x), screenY(point.y));
+        }
+
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    /// Координата указателя в пикселях карты (с ограничением по её границам).
+    function mapPointAt(event) {
+        const layout = state.layout;
+        const session = state.session;
+        if (!layout || !session?.map) return null;
+
+        const bounds = els.stage.getBoundingClientRect();
+        const rect = session.visibleRect;
+
+        return {
+            x: clampNumber(
+                rect.x + (event.clientX - bounds.left - layout.offsetX) / layout.scale,
+                0,
+                session.map.width),
+            y: clampNumber(
+                rect.y + (event.clientY - bounds.top - layout.offsetY) / layout.scale,
+                0,
+                session.map.height)
+        };
+    }
+
+    function setDrawing(enabled) {
+        state.drawing = Boolean(enabled) && !displayMode;
+
+        if (!state.drawing) state.stroke = null;
+
+        els.stage.classList.toggle('drawing', state.drawing);
+        els.drawToggle.classList.toggle('active', state.drawing);
+        els.drawToggle.textContent = state.drawing ? 'Готово' : 'Рисовать';
+        renderSketch();
+    }
+
+    function finishStroke() {
+        const stroke = state.stroke;
+        state.stroke = null;
+
+        if (!stroke) return;
+
+        if (stroke.points.length === 0) {
+            renderSketch();
+            return;
+        }
+
+        const points = stroke.points.map((point) => ({
+            x: Math.round(point.x * 10) / 10,
+            y: Math.round(point.y * 10) / 10
+        }));
+
+        // Показываем штрих сразу, не дожидаясь ответа сервера: иначе он мигнёт.
+        state.sketch.strokes.push({
+            id: `local-${Date.now()}`,
+            color: stroke.color,
+            widthMapPx: stroke.widthMapPx,
+            points
+        });
+
+        renderSketch();
+
+        sendCommand({
+            type: 'addSketchStroke',
+            color: stroke.color,
+            widthMapPx: stroke.widthMapPx,
+            points
+        });
     }
 
     // ---------- страница ожидания ----------
@@ -483,6 +648,30 @@
     els.stage.addEventListener('pointerdown', (event) => {
         if (event.button !== 0 || !state.session?.map) return;
 
+        // На планшете с включённым замком не работает ничего: ни панорама, ни зум, ни токены.
+        if (displayMode && state.session.tabletInputLocked) {
+            event.preventDefault();
+            return;
+        }
+
+        // Режим рисования забирает указатель целиком — панорама и токены ждут.
+        if (state.drawing && !displayMode) {
+            const point = mapPointAt(event);
+            if (!point) return;
+
+            state.stroke = {
+                pointerId: event.pointerId,
+                color: state.erase ? 'eraser' : els.drawColor.value,
+                widthMapPx: Number(els.drawWidth.value) || 12,
+                points: [point]
+            };
+
+            els.stage.setPointerCapture(event.pointerId);
+            renderSketch();
+            event.preventDefault();
+            return;
+        }
+
         state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
         // Второй палец включает pinch-зум; начатые drag/pan отменяем.
@@ -563,6 +752,24 @@
             return;
         }
 
+        if (state.stroke && state.stroke.pointerId === event.pointerId) {
+            const point = mapPointAt(event);
+
+            if (point) {
+                const last = state.stroke.points[state.stroke.points.length - 1];
+                const distance = Math.hypot(point.x - last.x, point.y - last.y) * layout.scale;
+
+                // Точки реже 2 px на экране не нужны: они только раздувают штрих.
+                if (distance >= 2) {
+                    state.stroke.points.push(point);
+                    renderSketch();
+                }
+            }
+
+            event.preventDefault();
+            return;
+        }
+
         if (state.drag && state.drag.pointerId === event.pointerId) {
             const dx = (event.clientX - state.drag.startX) / layout.scale;
             const dy = (event.clientY - state.drag.startY) / layout.scale;
@@ -592,6 +799,10 @@
 
     function endPointer(event) {
         state.pointers.delete(event.pointerId);
+
+        if (state.stroke && state.stroke.pointerId === event.pointerId) {
+            finishStroke();
+        }
 
         if (state.pinch && state.pinch.ids.includes(event.pointerId)) {
             state.pinch = null;
@@ -690,6 +901,58 @@
     });
 
     els.reset.addEventListener('click', () => sendCommand({ type: 'resetView' }));
+
+    // Замок планшета: состояние живёт в сессии, поэтому его видят оба экрана.
+    els.tabletLock.addEventListener('change', () => {
+        sendCommand({ type: 'setTabletLock', locked: els.tabletLock.checked });
+    });
+
+    els.drawToggle.addEventListener('click', () => setDrawing(!state.drawing));
+
+    els.drawErase.addEventListener('click', () => {
+        state.erase = !state.erase;
+        els.drawErase.classList.toggle('active', state.erase);
+
+        // Ластик — тоже рисование: включаем режим, чтобы не искать вторую кнопку.
+        if (state.erase) setDrawing(true);
+    });
+
+    els.drawUndo.addEventListener('click', () => {
+        if (state.session?.map) sendCommand({ type: 'undoSketch' });
+    });
+
+    els.drawClear.addEventListener('click', () => {
+        if (!state.session?.map || state.sketch.strokes.length === 0) return;
+        if (!window.confirm('Очистить все наброски на карте?')) return;
+
+        sendCommand({ type: 'clearSketch' });
+    });
+
+    // Пустая карта-сетка генерируется на сервере и сразу открывается.
+    els.createBlank.addEventListener('click', async () => {
+        const columns = clampNumber(Math.round(Number(els.blankCols.value) || 15), 10, 30);
+        const rows = clampNumber(Math.round(Number(els.blankRows.value) || 10), 5, 20);
+
+        els.blankCols.value = String(columns);
+        els.blankRows.value = String(rows);
+        setStatus('создание карты…');
+
+        try {
+            const blank = await api('/api/maps/blank', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ columns, rows })
+            });
+
+            await refreshManifest();
+            els.mapSelect.value = blank.name;
+            note(`открыта пустая карта ${blank.columns}×${blank.rows}`);
+            setStatus('на связи', false, true);
+        } catch (error) {
+            note(`пустая карта: ${error.message}`);
+            setStatus('ошибка', true);
+        }
+    });
 
     els.filesToggle.addEventListener('click', () => els.files.classList.toggle('hidden'));
 
@@ -898,6 +1161,16 @@
             }
         });
 
+        source.addEventListener('sketch', (event) => {
+            try {
+                const sketch = JSON.parse(event.data);
+                state.sketch = { strokes: Array.isArray(sketch?.strokes) ? sketch.strokes : [] };
+                renderSketch();
+            } catch (error) {
+                note(`наброски: ${error.message}`);
+            }
+        });
+
         source.onopen = () => setStatus('на связи', false, true);
         source.onerror = () => setStatus('нет связи — переподключение…', true);
     }
@@ -908,7 +1181,12 @@
         if (displayMode) await postViewport();
 
         try {
-            const session = await api('/api/session');
+            const [session, sketch] = await Promise.all([
+                api('/api/session'),
+                api('/api/sketch')
+            ]);
+
+            state.sketch = { strokes: Array.isArray(sketch?.strokes) ? sketch.strokes : [] };
             applyState(session);
             setStatus('на связи', false, true);
         } catch (error) {

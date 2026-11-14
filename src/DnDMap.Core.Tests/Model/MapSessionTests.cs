@@ -1,3 +1,4 @@
+using DnDMap.Core.Geometry;
 using DnDMap.Core.Model;
 using DnDMap.Core.Protocol;
 using Xunit;
@@ -322,5 +323,77 @@ public class MapSessionTests
         var token = Assert.Single(session.Tokens);
         Assert.Equal(0, token.X, 6);
         Assert.Equal(MapHeight, token.Y, 6);
+    }
+
+    [Fact]
+    public void SetTabletInputLock_IsVisibleInSnapshotAndRaisesChange()
+    {
+        var session = CreateSessionWithMap();
+        SessionChange? last = null;
+        session.Changed += change => last = change;
+
+        Assert.True(session.Apply(new SetTabletInputLockCommand(true)));
+
+        Assert.True(session.TabletInputLocked);
+        Assert.True(session.Snapshot().TabletInputLocked);
+        Assert.Equal(SessionChangeKind.InputLock, last!.Kind);
+
+        Assert.True(session.Apply(new SetTabletInputLockCommand(false)));
+        Assert.False(session.Snapshot().TabletInputLocked);
+    }
+
+    [Fact]
+    public void Sketch_AddUndoAndClear()
+    {
+        var session = CreateSessionWithMap();
+        PointDto[] points = [new(10, 10), new(50, 60)];
+
+        Assert.True(session.Apply(new AddSketchStrokeCommand("#c9a227", 12, points)));
+        Assert.True(session.Apply(new AddSketchStrokeCommand(SketchStroke.EraserColor, 20, points)));
+
+        Assert.Equal(2, session.Sketch.Count);
+        Assert.Equal("#c9a227", session.Sketch[0].Color);
+        Assert.Equal(12, session.Sketch[0].WidthMapPx);
+        Assert.Equal(2, session.Sketch[0].Points.Count);
+
+        Assert.True(session.Apply(new UndoSketchCommand()));
+        Assert.Single(session.Sketch);
+
+        Assert.True(session.Apply(new ClearSketchCommand()));
+        Assert.Empty(session.Sketch);
+
+        // Отменять и очищать нечего — команды отклонены.
+        Assert.False(session.Apply(new UndoSketchCommand()));
+        Assert.False(session.Apply(new ClearSketchCommand()));
+    }
+
+    [Fact]
+    public void Sketch_IsClearedWhenMapChanges()
+    {
+        var session = CreateSessionWithMap();
+        session.Apply(new AddSketchStrokeCommand(
+            "#000000", 6, [new PointDto(1, 1), new PointDto(2, 2)]));
+
+        Assert.True(session.Apply(new SetMapCommand("other.png", 1000, 700)));
+
+        Assert.Empty(session.Sketch);
+    }
+
+    [Fact]
+    public void Sketch_RejectsInvalidStrokes_AndClampsPoints()
+    {
+        var session = CreateSessionWithMap();
+
+        Assert.False(session.Apply(new AddSketchStrokeCommand("red", 6, [new PointDto(1, 1)])));
+        Assert.False(session.Apply(new AddSketchStrokeCommand("#000000", 6, [])));
+
+        Assert.True(session.Apply(new AddSketchStrokeCommand(
+            "#000000", 500, [new PointDto(-100, 5000), new PointDto(800, 450)])));
+
+        var stroke = Assert.Single(session.Sketch);
+        Assert.Equal(200, stroke.WidthMapPx);
+        Assert.Equal(0, stroke.Points[0].X, 6);
+        Assert.Equal(MapHeight, stroke.Points[0].Y, 6);
+        Assert.Equal(800, stroke.Points[1].X, 6);
     }
 }

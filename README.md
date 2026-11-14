@@ -15,6 +15,9 @@ Currently, it's in a stage of `lazy development` where the main functionality is
 - Adjustable base diameter (slider, 20–200 px, default 100 px), applied to all tokens at once.
 - Pan the map by dragging, zoom with `Ctrl` + mouse wheel or the vertical slider (1×–3×), reset the view with `Reset`. The map always covers the screen, so it cannot be dragged out of view; at 1× it is fully visible and centred.
 - **Tablet mode:** an Android tablet runs the HTTP host and shows the map fullscreen; the DM opens `http://<tablet-ip>:5000/` in a laptop browser and controls maps, tokens, zoom and token size from there.
+- **Blank grid map:** create an empty map with 10–30 cells across and 5–20 down (100 px per cell) right from the remote control; it is generated on the host and opened like any other map.
+- **Sketches:** the DM draws terrain notes on top of the map with a brush, erases them, undoes the last stroke or clears everything. Strokes live in the session (not in the image file) and are cleared when the map changes.
+- **Tablet lock:** one checkbox on the remote control — «планшет: только показ» — disables every tablet gesture (pan, pinch, zoom buttons, token dragging) while the laptop remote keeps working. The tablet shows a lock badge.
 - The last used map/token folders are remembered between sessions.
 
 ## Requirements
@@ -114,7 +117,13 @@ The installable APK is `src/DnDMap.Android/bin/Debug/net10.0-android/ru.dndmap.h
 
 On launch the app shows a toast with the address for the DM, e.g. `http://192.168.1.42:5000/`. The waiting screen on the tablet also keeps showing this address (plus alternatives if the host has several network interfaces) until a map is opened; the data comes from `GET /api/host`. Open the address in a browser on the laptop — the remote control page has file upload, map/token selection, zoom and token-size controls.
 
-Tablet controls (only in `?display=1`): pinch with two fingers zooms around the gesture centre, the translucent `−`/`+` buttons in the bottom-right corner zoom by steps, one finger drags a token, and dragging empty space pans the map. All of it goes through the same `POST /api/commands` as the DM's remote control, so both screens stay in sync.
+Tablet controls (only in `?display=1`): pinch with two fingers zooms around the gesture centre, the translucent `−`/`+` buttons in the bottom-right corner zoom by steps, one finger drags a token, and dragging empty space pans the map. All of it goes through the same `POST /api/commands` as the DM's remote control, so both screens stay in sync. When the DM enables «планшет: только показ», all of these gestures are ignored on the tablet and a lock badge appears in the corner.
+
+### Blank maps and sketches
+
+Open **Файлы → Пустая карта**, pick the number of cells (width 10–30, height 5–20, 100 px per cell) and press **Создать и открыть**. The host renders the grid as a real PNG (`Пустая <cols>x<rows>.png`), so the map behaves like any uploaded image and appears in the map list.
+
+Sketches are drawn by the DM on the laptop only: press **Рисовать**, choose colour and thickness, then drag on the map. **Ластик** erases sketches (the map itself is untouched), `↶` undoes the last stroke, **Очистить** removes all strokes after a confirmation. The tablet mirrors the sketches live over SSE. Strokes are kept in map pixels and are cleared automatically when another map is opened; they are not saved to disk.
 
 The GitHub Actions workflow `.github/workflows/android.yml` builds the APK on every push to any branch that touches the host projects (or via *workflow_dispatch*) and uploads `DnDMap-android-<run>` as an artifact.
 

@@ -13,6 +13,9 @@
         <span class="spacer"></span>
 
         <button id="filesToggle" class="btn" type="button">Файлы</button>
+        <label class="check" title="Запретить панораму, зум и перетаскивание токенов на планшете">
+            <input id="tabletLock" type="checkbox"> планшет: только показ
+        </label>
 
         <span class="divider"></span>
 
@@ -28,6 +31,27 @@
             <option value="Huge">огромный</option>
         </select>
         <button id="addToken" class="btn" type="button">+ токен</button>
+
+        <span class="divider"></span>
+
+        <div class="draw" title="Наброски поверх карты">
+            <button id="drawToggle" class="btn" type="button">Рисовать</button>
+            <select id="drawColor" title="Цвет наброска">
+                <option value="#1b1b1b">чёрный</option>
+                <option value="#8b3a2f">коричневый</option>
+                <option value="#3f6b4a">зелёный</option>
+                <option value="#2f4f6b">синий</option>
+                <option value="#c9a227" selected>золотой</option>
+            </select>
+            <select id="drawWidth" title="Толщина">
+                <option value="6">тонкая</option>
+                <option value="12" selected>средняя</option>
+                <option value="24">толстая</option>
+            </select>
+            <button id="drawErase" class="btn" type="button" title="Ластик">Ластик</button>
+            <button id="drawUndo" class="btn icon" type="button" title="Отменить последний штрих">↶</button>
+            <button id="drawClear" class="btn" type="button" title="Очистить все наброски">Очистить</button>
+        </div>
 
         <span class="divider"></span>
 
@@ -63,6 +87,17 @@
             <small id="tokenCount" class="count"></small>
         </section>
 
+        <section class="blank-map">
+            <b>Пустая карта</b>
+            <div class="blank-row">
+                <label>клеток: <input id="blankCols" type="number" min="10" max="30" value="15"></label>
+                <span>×</span>
+                <label><input id="blankRows" type="number" min="5" max="20" value="10"></label>
+            </div>
+            <button id="createBlank" class="btn" type="button">Создать и открыть</button>
+            <small class="hint">ширина 10–30, высота 5–20 клеток; клетка 100 px</small>
+        </section>
+
         <p class="hint">Выбранные файлы браузер запоминает и при следующем подключении
             досылает недостающие на планшет.</p>
         <p id="note" class="note"></p>
@@ -70,6 +105,7 @@
 
     <main id="stage">
         <img id="mapImage" alt="">
+        <canvas id="sketch" class="sketch"></canvas>
         <div id="tokens"></div>
         <div id="empty" class="empty">
             <div class="empty-inner">
@@ -81,6 +117,7 @@
             <button id="touchZoomOut" type="button" aria-label="Уменьшить">−</button>
             <button id="touchZoomIn" type="button" aria-label="Увеличить">+</button>
         </div>
+        <div id="lockBadge" class="lock-badge hidden">🔒 управление с планшета выключено</div>
     </main>
 
     <script src="/app.js"></script>

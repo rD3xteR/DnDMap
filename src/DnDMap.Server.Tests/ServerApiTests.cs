@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using DnDMap.Core.Imaging;
 using DnDMap.Core.Protocol;
 using DnDMap.Server;
 using Xunit;
@@ -265,6 +266,10 @@ public sealed class ServerApiTests
         var initial = await ReadEventAsync(reader, timeout.Token);
         Assert.Contains("\"revision\":0", initial);
 
+        // Рукопожатие шлёт два события: состояние и (пустые) наброски.
+        var initialSketch = await ReadEventAsync(reader, timeout.Token);
+        Assert.Contains("\"strokes\":[]", initialSketch);
+
         await server.UploadAsync("map", "board.png", ServerFixture.PngBytes(100, 100));
         var command = await server.SendCommandAsync(SetMapBoard);
         Assert.Equal(HttpStatusCode.OK, command.StatusCode);
@@ -272,6 +277,10 @@ public sealed class ServerApiTests
         var update = await ReadEventAsync(reader, timeout.Token);
         Assert.Contains("\"revision\":1", update);
         Assert.Contains("board.png", update);
+
+        // Смена карты очищает наброски — сервер присылает и это событие.
+        var sketchUpdate = await ReadEventAsync(reader, timeout.Token);
+        Assert.Contains("\"strokes\":[]", sketchUpdate);
     }
 
     [Fact]
@@ -313,6 +322,103 @@ public sealed class ServerApiTests
             new StringContent("""{"width":0,"height":1000}""", Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BlankMap_CreatesGridAndOpensIt()
+    {
+        await using var server = new ServerFixture();
+
+        var response = await server.Client.PostAsync(
+            "/api/maps/blank",
+            new StringContent("""{"columns":15,"rows":10}""", Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var blank = await response.Content.ReadFromJsonAsync<BlankMapDto>(ProtocolJson.Options);
+        Assert.NotNull(blank);
+        Assert.Equal(15, blank!.Columns);
+        Assert.Equal(10, blank.Rows);
+        Assert.Equal(1500, blank.Width);
+        Assert.Equal(1000, blank.Height);
+        Assert.Equal("Пустая 15x10.png", blank.Name);
+
+        var session = await server.Client.GetFromJsonAsync<SessionDto>("/api/session", ProtocolJson.Options);
+        Assert.Equal(blank.Name, session!.Map!.Name);
+        Assert.Equal(1500, session.Map.Width);
+        Assert.Equal(1000, session.Map.Height);
+
+        // Файл появился в манифесте и скачивается как настоящий PNG.
+        var manifest = await server.Client.GetFromJsonAsync<FileManifestDto>(
+            "/api/files?kind=map", ProtocolJson.Options);
+        Assert.Contains(manifest!.Files, entry => entry.Name == blank.Name);
+
+        var image = await server.Client.GetAsync($"/files/map/{Uri.EscapeDataString(blank.Name)}");
+        Assert.Equal(HttpStatusCode.OK, image.StatusCode);
+        Assert.Equal("image/png", image.Content.Headers.ContentType?.MediaType);
+
+        var bytes = await image.Content.ReadAsByteArrayAsync();
+        Assert.True(ImageSizeReader.TryRead(new MemoryStream(bytes), out var size));
+        Assert.Equal(1500, size.Width);
+        Assert.Equal(1000, size.Height);
+    }
+
+    [Theory]
+    [InlineData(9, 10)]
+    [InlineData(31, 10)]
+    [InlineData(15, 4)]
+    [InlineData(15, 21)]
+    public async Task BlankMap_RejectsOutOfRange(int columns, int rows)
+    {
+        await using var server = new ServerFixture();
+
+        var response = await server.Client.PostAsync(
+            "/api/maps/blank",
+            new StringContent(
+                $"{{\"columns\":{columns},\"rows\":{rows}}}",
+                Encoding.UTF8,
+                "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task TabletLock_RoundtripsThroughSession()
+    {
+        await using var server = new ServerFixture();
+
+        var response = await server.SendCommandAsync("""{"type":"setTabletLock","locked":true}""");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var session = await server.Client.GetFromJsonAsync<SessionDto>("/api/session", ProtocolJson.Options);
+        Assert.True(session!.TabletInputLocked);
+    }
+
+    [Fact]
+    public async Task Sketch_AddsUndoesAndClears()
+    {
+        await using var server = new ServerFixture();
+        await server.UploadAsync("map", "board.png", ServerFixture.PngBytes(400, 300));
+        await server.SendCommandAsync(SetMapBoard);
+
+        var add = await server.SendCommandAsync(
+            """{"type":"addSketchStroke","color":"#c9a227","widthMapPx":12,"points":[{"x":10,"y":10},{"x":80,"y":40}]}""");
+        Assert.Equal(HttpStatusCode.OK, add.StatusCode);
+
+        var sketch = await server.Client.GetFromJsonAsync<SketchDto>("/api/sketch", ProtocolJson.Options);
+        var stroke = Assert.Single(sketch!.Strokes);
+        Assert.Equal("#c9a227", stroke.Color);
+        Assert.Equal(12, stroke.WidthMapPx);
+        Assert.Equal(2, stroke.Points.Count);
+
+        var undo = await server.SendCommandAsync("""{"type":"undoSketch"}""");
+        Assert.Equal(HttpStatusCode.OK, undo.StatusCode);
+
+        sketch = await server.Client.GetFromJsonAsync<SketchDto>("/api/sketch", ProtocolJson.Options);
+        Assert.Empty(sketch!.Strokes);
+
+        // Очищать нечего — команда отклонена.
+        var clear = await server.SendCommandAsync("""{"type":"clearSketch"}""");
+        Assert.Equal(HttpStatusCode.Conflict, clear.StatusCode);
     }
 
     private static async Task<string> ReadEventAsync(StreamReader reader, CancellationToken cancellationToken)

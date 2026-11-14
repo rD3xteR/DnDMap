@@ -15,6 +15,10 @@ namespace DnDMap.Core.Protocol;
 [JsonDerivedType(typeof(SetDiameterCommand), "setDiameter")]
 [JsonDerivedType(typeof(SetViewCommand), "setView")]
 [JsonDerivedType(typeof(ResetViewCommand), "resetView")]
+[JsonDerivedType(typeof(AddSketchStrokeCommand), "addSketchStroke")]
+[JsonDerivedType(typeof(UndoSketchCommand), "undoSketch")]
+[JsonDerivedType(typeof(ClearSketchCommand), "clearSketch")]
+[JsonDerivedType(typeof(SetTabletInputLockCommand), "setTabletLock")]
 public abstract record Command;
 
 /// <summary>Открыть карту. Ширина и высота — в пикселях файла.</summary>
@@ -51,3 +55,24 @@ public sealed record SetViewCommand(
     [property: JsonRequired] double Zoom) : Command;
 
 public sealed record ResetViewCommand : Command;
+
+/// <summary>
+/// Добавить штрих наброска. Точки — ломаная в пикселях карты, цвет — "#rrggbb"
+/// или <see cref="SketchStroke.EraserColor"/>.
+/// </summary>
+public sealed record AddSketchStrokeCommand(
+    [property: JsonRequired] string Color,
+    [property: JsonRequired] double WidthMapPx,
+    [property: JsonRequired] IReadOnlyList<PointDto> Points) : Command;
+
+/// <summary>Убрать последний штрих наброска.</summary>
+public sealed record UndoSketchCommand : Command;
+
+/// <summary>Очистить все наброски текущей карты.</summary>
+public sealed record ClearSketchCommand : Command;
+
+/// <summary>
+/// Запретить управление с планшета (панорама, зум, перетаскивание токенов).
+/// Пульт мастера продолжает работать.
+/// </summary>
+public sealed record SetTabletInputLockCommand([property: JsonRequired] bool Locked) : Command;

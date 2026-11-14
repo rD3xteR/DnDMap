@@ -9,7 +9,9 @@ public enum SessionChangeKind
     Tokens,
     View,
     Diameter,
-    Viewport
+    Viewport,
+    Sketch,
+    InputLock
 }
 
 /// <summary>Событие изменения сессии. Command = null для изменений, пришедших не из команды.</summary>

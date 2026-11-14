@@ -38,7 +38,7 @@ dotnet run --project DnDMap/DnDMap.csproj
 - SDK: `global.json` требует `8.0.0` c `rollForward: latestMajor` → на машине реально используется последний установленный (проверено: 10.0.302).
 - Целевая платформа `net10.0-windows7.0`, `UseWPF=true`, `UseWindowsForms=true` (нужен `FolderBrowserDialog`).
 - **Каталог вывода — вне репозитория**: `BaseOutputPath = ..\..\..\DndMap` относительно `DnDMap/DnDMap/`, то есть `C:\Users\User\source\DndMap\<Configuration>\`. Искать бинарники в `bin/` не нужно — их там нет; `AppendTargetFrameworkToOutputPath/AppendRuntimeIdentifierToOutputPath = false`.
-- Тестовые проекты — `src/DnDMap.Core.Tests` (xUnit, 78 тестов) и `src/DnDMap.Server.Tests` (15 тестов на живом `MapServer`). Анализаторов/линтеров нет; сборка идёт с **0 предупреждений**.
+- Тестовые проекты — `src/DnDMap.Core.Tests` (xUnit, 92 теста) и `src/DnDMap.Server.Tests` (26 тестов на живом `MapServer`). Анализаторов/линтеров нет; сборка идёт с **0 предупреждений**.
 
 ### Инсталлятор
 
